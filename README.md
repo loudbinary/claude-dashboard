@@ -88,6 +88,9 @@ Set under `ui.status`. States with `attention: true` sort to the top, tint the r
 
 ## How it behaves
 
+- **New session**: starts a Claude CLI session (`claude -p`) in the folder you choose. Start sessions here rather than
+  in a terminal and every one of them can be followed and answered from the dashboard. They run headless, so they
+  cannot stop to ask for permission; set `claude.new_session.permission_mode` and `allowed_tools` in the config.
 - **Rename**: click the pencil or edit the title in the detail panel. Names are stored in the dashboard database only.
 - **Reply**: sessions started from the dashboard can be answered in the detail panel (resumed by session id).
   Sessions running in a terminal are observed only; reply in the terminal.
@@ -108,5 +111,7 @@ apps/client/src/            App.vue, components/, api.ts
 ## Status of this scaffold
 
 Covered by tests (`bun run test`): config merge, status rules, URL parsing, approval detection against sample API
-responses, routes, rename, reply rules, origin checks. Not yet exercised against live systems: the HTTP hooks coming
-from a real Claude Code session, launching `claude -p` from a button, and live Azure DevOps and GitHub API calls.
+responses, routes, rename, reply rules, origin checks. The launcher has been run against the real `claude` CLI for
+start, stream parsing, failure handling and resume, but only on a machine where the CLI was not signed in, so a
+successful reply has not been seen yet. Not yet exercised against live systems: the HTTP hooks coming from a real
+Claude Code session, and live Azure DevOps and GitHub API calls.

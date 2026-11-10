@@ -7,7 +7,7 @@ import { launch as realLaunch, type LaunchOptions } from "./launcher";
 import { resolveUrl } from "./providers";
 import type { Provider } from "./providers/types";
 import { normalizeHook } from "./state";
-import { readNotes } from "./transcript";
+import { readNotes, type Note } from "./transcript";
 
 export type Broadcast = (msg: { type: "session" | "session_deleted" | "watch" | "watch_deleted"; data: unknown }) => void;
 
@@ -89,10 +89,29 @@ export function createApp(deps: AppDeps) {
         status: cfg.ui.status,
         inactive_after_minutes: cfg.ui.inactive_after_minutes,
         providers: providers.map((p) => p.key),
+        default_cwd: cfg.claude.default_cwd,
       });
     }
 
     if (path === "/api/sessions" && m === "GET") return json(store.listSessions());
+
+    // Start a new Claude CLI session from the dashboard, so it can be followed and answered here.
+    if (path === "/api/sessions" && m === "POST") {
+      const b = await body(req);
+      if (!b?.prompt?.trim()) return fail(400, "Expected JSON { prompt, cwd?, name? }");
+      const cwd = b.cwd?.trim() || cfg.claude.default_cwd;
+      if (!existsSync(cwd)) return fail(400, `Working folder does not exist: ${cwd}`);
+      try {
+        const id = await launch({
+          prompt: b.prompt, cwd, name: b.name?.trim() || undefined,
+          permission_mode: cfg.claude.new_session?.permission_mode,
+          allowed_tools: cfg.claude.new_session?.allowed_tools,
+        }, onSession);
+        return json({ session_id: id }, 201);
+      } catch (err) {
+        return fail(502, (err as Error).message);
+      }
+    }
 
     const sm = path.match(/^\/api\/sessions\/([^/]+)(\/reply)?$/);
     if (sm) {
@@ -100,7 +119,19 @@ export function createApp(deps: AppDeps) {
       const s = store.getSession(id);
       if (!s) return fail(404, "Session not found");
       if (!sm[2] && m === "GET") {
-        return json({ session: s, events: store.sessionEvents(id), notes: readNotes(s.transcript_path) });
+        const events = store.sessionEvents(id);
+        let notes: Note[] = readNotes(s.transcript_path);
+        // No transcript file known (hooks not installed): rebuild the notes from what the dashboard recorded.
+        if (!notes.length) {
+          notes = events.flatMap((e): Note[] => {
+            const p = JSON.parse(e.payload);
+            const ts = new Date(e.ts).toISOString();
+            if (e.type === "UserPromptSubmit" && p.prompt) return [{ role: "user", text: p.prompt, ts }];
+            if (e.type === "AssistantMessage" && p.text) return [{ role: "assistant", text: p.text, ts }];
+            return [];
+          });
+        }
+        return json({ session: s, events, notes });
       }
       if (!sm[2] && m === "PATCH") {
         const b = await body(req);

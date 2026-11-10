@@ -1,6 +1,6 @@
 export interface StatusStyle { label: string; color: string; attention: boolean }
 export interface Action { key: string; label: string; kind: "session" | "watch"; accepts?: "pr" | "run" }
-export interface AppConfig { actions: Action[]; status: Record<string, StatusStyle>; inactive_after_minutes: number; providers: string[] }
+export interface AppConfig { actions: Action[]; status: Record<string, StatusStyle>; inactive_after_minutes: number; providers: string[]; default_cwd: string }
 
 export interface Session {
   id: string; name: string | null; default_name: string; cwd: string | null; state: string;
@@ -26,6 +26,7 @@ async function call<T>(path: string, method = "GET", data?: unknown): Promise<T>
 export const api = {
   config: () => call<AppConfig>("/api/config"),
   sessions: () => call<Session[]>("/api/sessions"),
+  newSession: (prompt: string, cwd: string, name: string) => call<{ session_id: string }>("/api/sessions", "POST", { prompt, cwd, name }),
   session: (id: string) => call<SessionDetail>(`/api/sessions/${encodeURIComponent(id)}`),
   rename: (id: string, name: string) => call<Session>(`/api/sessions/${encodeURIComponent(id)}`, "PATCH", { name }),
   removeSession: (id: string) => call(`/api/sessions/${encodeURIComponent(id)}`, "DELETE"),

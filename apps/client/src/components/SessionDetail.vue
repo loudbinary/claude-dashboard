@@ -18,8 +18,19 @@ watch(() => props.session.id, () => { name.value = props.session.name ?? props.s
 // Refresh notes whenever the session changes (new prompt, stop, notification).
 watch(() => props.session.updated_at, load);
 
-const prompts = computed(() =>
-  (detail.value?.events ?? []).filter((e) => e.type === "UserPromptSubmit").map((e) => ({ ts: e.ts, text: JSON.parse(e.payload).prompt as string })));
+// Prompts you sent. A dashboard-started session can report the same prompt twice (once from the
+// launcher, once from a hook), so identical prompts within a few seconds are shown once.
+const prompts = computed(() => {
+  const out: { ts: number; text: string }[] = [];
+  for (const e of detail.value?.events ?? []) {
+    if (e.type !== "UserPromptSubmit") continue;
+    const text = JSON.parse(e.payload).prompt as string;
+    const last = out[out.length - 1];
+    if (last && last.text === text && e.ts - last.ts < 10_000) continue;
+    out.push({ ts: e.ts, text });
+  }
+  return out;
+});
 
 async function saveName() {
   const next = name.value.trim();

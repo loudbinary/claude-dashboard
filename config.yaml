@@ -11,6 +11,11 @@ claude:
   command: claude            # CLI used to launch and resume sessions from the dashboard
   default_cwd: .             # working folder for launched sessions
   extra_args: []             # appended to every launch, e.g. ["--model", "sonnet"]
+  # Sessions started with the "New session" button. They run headless, so they cannot stop to
+  # ask for permission: anything not allowed here is denied rather than prompted.
+  new_session:
+    permission_mode: default   # default | acceptEdits | plan | bypassPermissions
+    allowed_tools: []          # e.g. ["Read", "Edit", "Bash(git:*)"]
 
 providers:
   azure_devops:

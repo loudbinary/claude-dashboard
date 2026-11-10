@@ -14,6 +14,7 @@ export interface LaunchOptions {
 export function buildArgs(cfg: Config, o: LaunchOptions): string[] {
   const args = [cfg.claude.command, "-p", o.prompt, "--output-format", "stream-json", "--verbose"];
   if (o.resume) args.push("--resume", o.resume);
+  else if (o.name) args.push("--name", o.name);
   if (o.permission_mode) args.push("--permission-mode", o.permission_mode);
   if (o.allowed_tools?.length) args.push("--allowedTools", o.allowed_tools.join(","));
   return [...args, ...(cfg.claude.extra_args ?? [])];
@@ -43,7 +44,12 @@ export function launch(cfg: Config, store: Store, o: LaunchOptions, onChange: (s
         sessionId = msg.session_id;
         update({ source: "dashboard", state: "working", last_prompt: o.prompt, cwd: msg.cwd ?? o.cwd ?? cfg.claude.default_cwd,
                  ...(o.name && !o.resume ? { default_name: o.name } : {}) });
+        // Recorded here so the session is complete in the dashboard even when hooks are not installed.
+        store.addEvent(sessionId!, "UserPromptSubmit", { prompt: o.prompt, via: "dashboard" });
         resolveId(sessionId!);
+      } else if (msg.type === "assistant" && sessionId) {
+        const text = (msg.message?.content ?? []).filter((p: any) => p?.type === "text").map((p: any) => p.text).join("\n").trim();
+        if (text) { store.addEvent(sessionId, "AssistantMessage", { text }); update({ last_message: text }); }
       } else if (msg.type === "result") {
         finished = true;
         if (msg.session_id) sessionId = msg.session_id;

@@ -158,6 +158,25 @@ describe("app", () => {
     expect(launched[0]).toMatchObject({ prompt: "go", resume: "dash" });
   });
 
+  test("new session is launched in the requested folder with the configured permissions", async () => {
+    const { handle, launched } = setup();
+    const res = await handle(post("/api/sessions", { prompt: "Summarize this repo", cwd: import.meta.dir, name: "Repo summary" }));
+    expect(res.status).toBe(201);
+    expect(await res.json()).toEqual({ session_id: "new-session" });
+    expect(launched[0]).toMatchObject({ prompt: "Summarize this repo", cwd: import.meta.dir, name: "Repo summary", permission_mode: "default" });
+    expect((await handle(post("/api/sessions", { prompt: "x", cwd: "/no/such/folder" }))).status).toBe(400);
+    expect((await handle(post("/api/sessions", { prompt: "  " }))).status).toBe(400);
+  });
+
+  test("notes fall back to what the dashboard recorded when there is no transcript", async () => {
+    const { handle, store } = setup();
+    store.upsertSession("dash", { source: "dashboard" });
+    store.addEvent("dash", "UserPromptSubmit", { prompt: "hello" });
+    store.addEvent("dash", "AssistantMessage", { text: "hi there" });
+    const detail = await (await handle(new Request("http://127.0.0.1/api/sessions/dash"))).json();
+    expect(detail.notes.map((n: any) => [n.role, n.text])).toEqual([["user", "hello"], ["assistant", "hi there"]]);
+  });
+
   test("cross-origin and non-JSON posts are refused", async () => {
     const { handle } = setup();
     expect((await handle(post("/api/actions/review_pr", { url: "x" }, { origin: "https://evil.example" }))).status).toBe(403);

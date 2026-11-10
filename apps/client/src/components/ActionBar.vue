@@ -1,12 +1,19 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { ref, watch } from "vue";
 import { api, type Action } from "../api";
 
-defineProps<{ actions: Action[] }>();
-const emit = defineEmits<{ toast: [text: string, error?: boolean] }>();
+const props = defineProps<{ actions: Action[]; defaultCwd: string }>();
+const emit = defineEmits<{ toast: [text: string, error?: boolean]; started: [sessionId: string] }>();
 
 const manual = ref("");
 const busy = ref<string | null>(null);
+
+// New session form
+const open = ref(false);
+const prompt = ref("");
+const cwd = ref("");
+const name = ref("");
+watch(() => props.defaultCwd, (v) => { if (!cwd.value) cwd.value = v; }, { immediate: true });
 
 /** Typed URL wins; otherwise read the clipboard (the browser asks for permission the first time). */
 async function getUrl(): Promise<string> {
@@ -32,13 +39,37 @@ async function run(a: Action) {
     busy.value = null;
   }
 }
+
+async function start() {
+  if (!prompt.value.trim()) return;
+  busy.value = "new";
+  try {
+    const { session_id } = await api.newSession(prompt.value, cwd.value, name.value);
+    emit("started", session_id);
+    prompt.value = ""; name.value = ""; open.value = false;
+  } catch (err) {
+    emit("toast", (err as Error).message, true);
+  } finally {
+    busy.value = null;
+  }
+}
 </script>
 
 <template>
   <div class="actions">
+    <button class="action primary" :aria-expanded="open" @click="open = !open">＋ New session</button>
     <button v-for="a in actions" :key="a.key" class="action" :disabled="busy !== null" @click="run(a)">
       {{ busy === a.key ? "Starting…" : a.label }}
     </button>
     <input v-model="manual" class="url" type="url" placeholder="URL (leave empty to use the clipboard)" aria-label="URL for the action buttons" />
   </div>
+
+  <form v-if="open" class="new-session" @submit.prevent="start">
+    <textarea v-model="prompt" rows="3" placeholder="What should Claude do?" aria-label="Prompt" autofocus @keydown.ctrl.enter="start" />
+    <div class="row">
+      <label>Working folder <input v-model="cwd" class="mono" aria-label="Working folder" /></label>
+      <label>Name (optional) <input v-model="name" aria-label="Session name" /></label>
+      <button class="action primary" type="submit" :disabled="busy !== null || !prompt.trim()">{{ busy === "new" ? "Starting…" : "Start session" }}</button>
+    </div>
+  </form>
 </template>

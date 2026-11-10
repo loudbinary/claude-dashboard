@@ -91,7 +91,7 @@ onUnmounted(() => clearInterval(clock));
         <span class="conn" :class="{ up: connected }">{{ connected ? "Live" : "Reconnecting…" }}</span>
       </header>
 
-      <ActionBar :actions="config?.actions ?? []" @toast="toast" />
+      <ActionBar :actions="config?.actions ?? []" :default-cwd="config?.default_cwd ?? ''" @toast="toast" @started="selectedId = $event" />
 
       <section v-if="watches.length">
         <h2>Pipelines</h2>

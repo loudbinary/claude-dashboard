@@ -20,7 +20,10 @@ export interface ProviderConfig { enabled: boolean; token_env?: string; api_vers
 
 export interface Config {
   server: { host: string; port: number; database_path: string };
-  claude: { command: string; default_cwd: string; extra_args: string[] };
+  claude: {
+    command: string; default_cwd: string; extra_args: string[];
+    new_session?: { permission_mode?: string; allowed_tools?: string[] };
+  };
   providers: { azure_devops: ProviderConfig; github: ProviderConfig };
   watch: { poll_interval_seconds: number };
   actions: ActionConfig[];

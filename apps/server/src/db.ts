@@ -104,6 +104,12 @@ export class Store {
     return this.upsertSession(e.session_id, patch, now);
   }
 
+  /** Record something the dashboard itself observed (a prompt it sent, a message Claude streamed back). */
+  addEvent(sessionId: string, type: string, payload: Record<string, unknown>, now = Date.now()) {
+    this.db.query("INSERT INTO events (session_id, type, payload, ts) VALUES (?,?,?,?)")
+      .run(sessionId, type, JSON.stringify(payload), now);
+  }
+
   renameSession(id: string, name: string | null): Session | null {
     const cur = this.getSession(id);
     if (!cur) return null;
