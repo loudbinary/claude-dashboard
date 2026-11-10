@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, nextTick, ref, watch } from "vue";
 import { api, type Session, type SessionDetail, type StatusStyle } from "../api";
 import Markdown from "./Markdown.vue";
 import StatusChip from "./StatusChip.vue";
@@ -12,12 +12,23 @@ const name = ref("");
 const reply = ref("");
 const sending = ref(false);
 
-async function load() {
+const panel = ref<HTMLElement | null>(null);
+
+/**
+ * Opening a session jumps to the bottom, where the latest exchange and the reply box are.
+ * Live updates keep following the bottom only if you are already there, so reading older notes is not interrupted.
+ */
+async function load(jump: boolean) {
+  const el = panel.value;
+  const follow = jump || !el || el.scrollHeight - el.scrollTop - el.clientHeight < 80;
   try { detail.value = await api.session(props.session.id); } catch (err) { emit("toast", (err as Error).message, true); }
+  if (!follow) return;
+  await nextTick();
+  if (panel.value) panel.value.scrollTop = panel.value.scrollHeight;
 }
-watch(() => props.session.id, () => { name.value = props.session.name ?? props.session.default_name; detail.value = null; load(); }, { immediate: true });
+watch(() => props.session.id, () => { name.value = props.session.name ?? props.session.default_name; detail.value = null; load(true); }, { immediate: true });
 // Refresh notes whenever the session changes (new prompt, stop, notification).
-watch(() => props.session.updated_at, load);
+watch(() => props.session.updated_at, () => load(false));
 
 // Prompts you sent. A dashboard-started session can report the same prompt twice (once from the
 // launcher, once from a hook), so identical prompts within a few seconds are shown once.
@@ -53,7 +64,7 @@ async function remove() {
 </script>
 
 <template>
-  <aside class="detail">
+  <aside ref="panel" class="detail">
     <header>
       <input v-model="name" class="rename" aria-label="Session name" @blur="saveName" @keydown.enter="($event.target as HTMLInputElement).blur()" />
       <button class="ghost" aria-label="Close" @click="emit('close')">✕</button>
