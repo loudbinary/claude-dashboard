@@ -50,6 +50,20 @@ actions:
       problems, security concerns, and suggested changes. Do not push or post comments.
     permission_mode:           # empty = use the workspace's Claude settings
     allowed_tools: []
+  - key: investigate_pipeline
+    label: Investigate pipeline
+    kind: session
+    accepts: run
+    name: "Pipeline debug: {title}"
+    prompt: |
+      Debug the errors in the pipeline run at {url}.
+      Find the failed (or still failing) stages, jobs and tasks, read their logs, and work out the
+      root cause. Then report: what failed and where, the root cause with the log lines that show it,
+      whether it is caused by the code change, the pipeline definition, the agent or environment, or
+      something transient, and the fix you recommend. Do not re-run, cancel or edit the pipeline,
+      push code, or change any cloud resources. Investigate and report only.
+    permission_mode:           # empty = use the workspace's Claude settings
+    allowed_tools: []
   - key: watch_pipeline
     label: Watch pipeline
     kind: watch

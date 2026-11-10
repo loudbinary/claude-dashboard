@@ -23,8 +23,8 @@ describe("config", () => {
   test("deepMerge merges objects and replaces arrays", () => {
     expect(deepMerge({ a: { b: 1, c: 2 }, l: [1, 2] }, { a: { c: 3 }, l: [9] })).toEqual({ a: { b: 1, c: 3 }, l: [9] });
   });
-  test("shipped config loads with both buttons", () => {
-    expect(cfg.actions.map((a) => a.key)).toEqual(["review_pr", "watch_pipeline"]);
+  test("shipped config loads with its buttons", () => {
+    expect(cfg.actions.map((a) => a.key)).toEqual(["review_pr", "investigate_pipeline", "watch_pipeline"]);
     expect(cfg.ui.status.needs_permission!.attention).toBe(true);
   });
 });
