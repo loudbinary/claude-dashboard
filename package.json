@@ -1,0 +1,12 @@
+{
+  "name": "claude-dashboard",
+  "private": true,
+  "scripts": {
+    "setup": "cd apps/server && bun install && cd ../client && bun install",
+    "server": "cd apps/server && bun run dev",
+    "client": "cd apps/client && bun run dev",
+    "build": "cd apps/client && bun run build",
+    "start": "cd apps/server && bun run start",
+    "test": "cd apps/server && bun test"
+  }
+}

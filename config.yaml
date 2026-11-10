@@ -1,0 +1,60 @@
+# Shared defaults. Checked in.
+# Per-machine overrides go in config.local.yaml (git-ignored); it is deep-merged over this file.
+# Tokens are never stored here: each provider names the environment variable that holds its token.
+
+server:
+  host: 127.0.0.1
+  port: 4000
+  database_path: ./data/dashboard.sqlite
+
+claude:
+  command: claude            # CLI used to launch and resume sessions from the dashboard
+  default_cwd: .             # working folder for launched sessions
+  extra_args: []             # appended to every launch, e.g. ["--model", "sonnet"]
+
+providers:
+  azure_devops:
+    enabled: true
+    token_env: AZDO_PAT
+    api_version: "7.1"
+  github:
+    enabled: true
+    token_env: GITHUB_TOKEN
+
+watch:
+  poll_interval_seconds: 60
+
+# Buttons shown in the dashboard. Add entries here; no code change needed.
+#   kind: session -> starts a new Claude session with `prompt`
+#   kind: watch   -> polls a pipeline run and raises a status when it needs you
+#   accepts: pr | run -> what kind of URL the button expects (read from the clipboard)
+actions:
+  - key: review_pr
+    label: Review PR
+    kind: session
+    accepts: pr
+    name: "PR review: {title}"
+    prompt: |
+      Review the pull request at {url}.
+      Read the description and the full diff, then report: a short summary, correctness
+      problems, security concerns, and suggested changes. Do not push or post comments.
+    permission_mode: default
+    allowed_tools: []
+  - key: watch_pipeline
+    label: Watch pipeline
+    kind: watch
+    accepts: run
+
+ui:
+  inactive_after_minutes: 120
+  status:
+    needs_permission: { label: Needs permission,       color: "#D92D20", attention: true }
+    waiting_reply:    { label: Waiting for your reply, color: "#F79009", attention: true }
+    approval_pending: { label: Awaiting approval,      color: "#7A5AF8", attention: true }
+    failed:           { label: Failed,                 color: "#912018", attention: true }
+    working:          { label: Working,                color: "#2E90FA", attention: false }
+    watching:         { label: Watching,               color: "#2E90FA", attention: false }
+    done:             { label: Done,                   color: "#12B76A", attention: false }
+    succeeded:        { label: Succeeded,              color: "#12B76A", attention: false }
+    canceled:         { label: Canceled,               color: "#98A2B3", attention: false }
+    idle:             { label: Inactive,               color: "#98A2B3", attention: false }

@@ -1,0 +1,12 @@
+# Copy to config.local.yaml and edit for this machine. Only include keys you want to change.
+
+server:
+  port: 4000
+  database_path: C:/Users/you/.claude-dashboard/dashboard.sqlite
+
+claude:
+  default_cwd: C:/src
+
+providers:
+  github:
+    enabled: false          # e.g. work machine that only uses Azure DevOps

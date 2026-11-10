@@ -1,0 +1,11 @@
+{
+  "hooks": {
+    "SessionStart":     [{ "hooks": [{ "type": "http", "url": "http://127.0.0.1:4000/hooks" }] }],
+    "UserPromptSubmit": [{ "hooks": [{ "type": "http", "url": "http://127.0.0.1:4000/hooks" }] }],
+    "PreToolUse":       [{ "hooks": [{ "type": "http", "url": "http://127.0.0.1:4000/hooks" }] }],
+    "PostToolUse":      [{ "hooks": [{ "type": "http", "url": "http://127.0.0.1:4000/hooks" }] }],
+    "Notification":     [{ "hooks": [{ "type": "http", "url": "http://127.0.0.1:4000/hooks" }] }],
+    "Stop":             [{ "hooks": [{ "type": "http", "url": "http://127.0.0.1:4000/hooks" }] }],
+    "SessionEnd":       [{ "hooks": [{ "type": "http", "url": "http://127.0.0.1:4000/hooks" }] }]
+  }
+}
