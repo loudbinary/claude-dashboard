@@ -84,3 +84,21 @@ input:focus, textarea:focus, button:focus-visible { outline: 2px solid var(--acc
 .new-session textarea { width: 100%; resize: vertical; }
 .new-session .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }
 .new-session label { display: grid; gap: 4px; font-size: 12px; color: var(--muted); flex: 1; min-width: 200px; }
+
+/* Rendered markdown from Claude */
+.md { overflow-wrap: anywhere; line-height: 1.5; }
+.md > :first-child { margin-top: 0; }
+.md > :last-child { margin-bottom: 0; }
+.md p, .md ul, .md ol, .md pre, .md table, .md blockquote { margin: 0 0 10px; }
+.md h1, .md h2, .md h3, .md h4 { font-size: 14px; text-transform: none; letter-spacing: 0; color: var(--text); margin: 14px 0 6px; }
+.md h1 { font-size: 16px; }
+.md ul, .md ol { padding-left: 22px; }
+.md li { margin: 2px 0; }
+.md code { background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px; font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
+.md pre { background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; overflow-x: auto; }
+.md pre code { background: none; border: 0; padding: 0; white-space: pre; }
+.md blockquote { border-left: 3px solid var(--line); padding-left: 10px; color: var(--muted); }
+.md table { border-collapse: collapse; display: block; overflow-x: auto; }
+.md th, .md td { border: 1px solid var(--line); padding: 4px 8px; text-align: left; }
+.md th { background: var(--bg); }
+.md hr { border: 0; border-top: 1px solid var(--line); margin: 12px 0; }

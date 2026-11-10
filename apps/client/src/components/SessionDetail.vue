@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 import { api, type Session, type SessionDetail, type StatusStyle } from "../api";
+import Markdown from "./Markdown.vue";
 import StatusChip from "./StatusChip.vue";
 
 const props = defineProps<{ session: Session; styles: Record<string, StatusStyle> }>();
@@ -66,7 +67,7 @@ async function remove() {
 
     <section v-if="session.last_message">
       <h3>Latest from Claude</h3>
-      <p class="pre">{{ session.last_message }}</p>
+      <Markdown :text="session.last_message" />
     </section>
 
     <section>
@@ -83,7 +84,8 @@ async function remove() {
       <p v-else-if="!detail.notes.length" class="muted">No transcript available for this session on this machine.</p>
       <div v-for="(n, i) in detail?.notes ?? []" :key="i" class="note" :class="n.role">
         <strong>{{ n.role === "user" ? "You" : "Claude" }}</strong>
-        <p class="pre">{{ n.text }}</p>
+        <Markdown v-if="n.role === 'assistant'" :text="n.text" />
+        <p v-else class="pre">{{ n.text }}</p>
       </div>
     </section>
 
