@@ -24,6 +24,7 @@ export interface AppDeps {
 
 const json = (data: unknown, status = 200) => Response.json(data, { status });
 const fail = (status: number, error: string) => json({ error }, status);
+const KIND_LABEL = { pr: "pull request", run: "pipeline run", incident: "PagerDuty incident" } as const;
 const fill = (tpl: string, vars: Record<string, string>) => tpl.replace(/\{(\w+)\}/g, (m, k) => vars[k] ?? m);
 
 /** Requests from a web page on another site are refused, so a stray page cannot start sessions. */
@@ -46,17 +47,23 @@ export function createApp(deps: AppDeps) {
 
   async function runAction(action: ActionConfig, url: string): Promise<Response> {
     const hit = resolveUrl(providers, url);
-    if (!hit) return fail(400, "That is not a recognized Azure DevOps or GitHub pull request or pipeline URL (or its provider is disabled in config).");
+    if (!hit) return fail(400, "That is not a recognized pull request, pipeline run or PagerDuty incident URL (or its provider is disabled in config).");
     if (action.accepts && hit.ref.kind !== action.accepts) {
-      return fail(400, `"${action.label}" expects a ${action.accepts === "pr" ? "pull request" : "pipeline run"} URL.`);
+      return fail(400, `"${action.label}" expects a ${KIND_LABEL[action.accepts]} URL.`);
     }
     if (action.kind === "watch") {
+      if (hit.ref.kind !== "run") return fail(400, `"${action.label}" can only watch pipeline runs.`);
       const w: Watch = store.addWatch(url, hit.provider.key, hit.ref.title);
       broadcast({ type: "watch", data: w });
       deps.pollNow?.();
       return json({ watch: w }, 201);
     }
-    const vars = { url, title: hit.ref.title, provider: hit.provider.key };
+    let details = "";
+    if (action.prompt!.includes("{details}") && hit.provider.context) {
+      try { details = await hit.provider.context(hit.ref); }
+      catch (err) { return fail(502, `Could not read ${hit.ref.title}: ${(err as Error).message}`); }
+    }
+    const vars = { url, title: hit.ref.title, provider: hit.provider.key, details };
     try {
       const id = await launch({
         prompt: fill(action.prompt!, vars),

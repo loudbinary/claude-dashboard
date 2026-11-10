@@ -9,7 +9,7 @@ export interface ActionConfig {
   key: string;
   label: string;
   kind: "session" | "watch";
-  accepts?: "pr" | "run";
+  accepts?: "pr" | "run" | "incident";
   prompt?: string;
   name?: string;
   permission_mode?: string | null;
@@ -25,7 +25,7 @@ export interface Config {
     command: string; default_cwd: string; extra_args: string[];
     new_session?: { permission_mode?: string | null; allowed_tools?: string[] | null } | null;
   };
-  providers: { azure_devops: ProviderConfig; github: ProviderConfig };
+  providers: { azure_devops: ProviderConfig; github: ProviderConfig; pagerduty?: ProviderConfig };
   watch: { poll_interval_seconds: number };
   actions: ActionConfig[];
   ui: { inactive_after_minutes: number; status: Record<string, StatusStyle>; seen_color?: string };

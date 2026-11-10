@@ -40,7 +40,7 @@ async function run(a: Action) {
   busy.value = a.key;
   try {
     const url = await getUrl();
-    if (!url) throw new Error("The clipboard is empty. Copy a pull request or pipeline URL first.");
+    if (!url) throw new Error("The clipboard is empty. Copy a pull request, pipeline run or PagerDuty incident URL first.");
     await api.runAction(a.key, url);
     emit("toast", `${a.label}: started for ${url}`);
     manual.value = "";

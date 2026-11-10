@@ -6,6 +6,7 @@ import { Store } from "../src/db";
 import { buildArgs, makeStreamHandler } from "../src/launcher";
 import { azureDevOps, pendingApprovalStages } from "../src/providers/azureDevOps";
 import { github } from "../src/providers/github";
+import { pagerduty } from "../src/providers/pagerduty";
 import { nextState, normalizeHook } from "../src/state";
 import { Database } from "bun:sqlite";
 import { mkdtempSync } from "node:fs";
@@ -28,7 +29,7 @@ describe("config", () => {
     expect(deepMerge({ a: { b: 1, c: 2 }, l: [1, 2] }, { a: { c: 3 }, l: [9] })).toEqual({ a: { b: 1, c: 3 }, l: [9] });
   });
   test("shipped config loads with its buttons", () => {
-    expect(cfg.actions.map((a) => a.key)).toEqual(["review_pr", "investigate_pipeline", "watch_pipeline"]);
+    expect(cfg.actions.map((a) => a.key)).toEqual(["review_pr", "investigate_pipeline", "analyze_pagerduty", "watch_pipeline"]);
     expect(cfg.ui.status.needs_permission!.attention).toBe(true);
   });
 });
@@ -67,6 +68,12 @@ describe("providers", () => {
     expect(gh.parse("https://github.com/o/r/actions/runs/99")).toMatchObject({ kind: "run", runId: "99", base: "https://api.github.com/repos/o/r" });
     expect(gh.parse("https://dev.azure.com/org/proj/_build/results?buildId=1")).toBeNull();
   });
+  test("PagerDuty URLs", () => {
+    const pd = pagerduty("tok");
+    expect(pd.parse("https://acme.pagerduty.com/incidents/Q1ABC2DEF3/timeline")).toMatchObject({ kind: "incident", id: "Q1ABC2DEF3", subdomain: "acme" });
+    expect(pd.parse("https://acme.pagerduty.com/services/P123")).toBeNull();
+    expect(pd.parse("https://evil.example.com/incidents/Q1")).toBeNull();
+  });
   test("Azure DevOps approval detection walks up to the stage", () => {
     const records = [
       { id: "st", type: "Stage", name: "Deploy Prod" },
@@ -100,7 +107,12 @@ describe("app", () => {
     const store = new Store(":memory:");
     const sent: any[] = [];
     const launched: any[] = [];
-    const providers = [azureDevOps("t", "7.1", fakeFetch({ "/timeline": { records: [] }, "/builds/": { status: "completed", result: "succeeded", buildNumber: "9" } })), github("t")];
+    const providers = [azureDevOps("t", "7.1", fakeFetch({ "/timeline": { records: [] }, "/builds/": { status: "completed", result: "succeeded", buildNumber: "9" } })), github("t"),
+      pagerduty("t", fakeFetch({
+        "/alerts": { alerts: [{ summary: "CPU > 90%", status: "triggered", body: { details: { pod: "api-1" } } }] },
+        "/log_entries": { log_entries: [] },
+        "/incidents/Q1ABC": { incident: { title: "High CPU on api", status: "triggered", service: { summary: "core-api" } } },
+      }))];
     const handle = createApp({
       cfg, store, providers, clientDir: "/nonexistent",
       broadcast: (m) => sent.push(m),
@@ -135,6 +147,17 @@ describe("app", () => {
     expect(res.status).toBe(201);
     expect(launched[0].prompt).toContain("https://dev.azure.com/org/proj/_git/repo/pullrequest/15");
     expect(launched[0].name).toBe("PR review: repo !15");
+  });
+
+  test("analyze_pagerduty prefetches the incident into the prompt", async () => {
+    const { handle, launched } = setup();
+    const res = await handle(post("/api/actions/analyze_pagerduty", { url: "https://acme.pagerduty.com/incidents/Q1ABC" }));
+    expect(res.status).toBe(201);
+    expect(launched[0].prompt).toContain("High CPU on api");
+    expect(launched[0].prompt).toContain("api-1");
+    expect(launched[0].name).toBe("Incident: PagerDuty Q1ABC");
+    expect((await handle(post("/api/actions/analyze_pagerduty", { url: "https://dev.azure.com/org/proj/_git/repo/pullrequest/15" }))).status).toBe(400);
+    expect((await handle(post("/api/actions/watch_pipeline", { url: "https://acme.pagerduty.com/incidents/Q1ABC" }))).status).toBe(400);
   });
 
   test("buttons reject the wrong kind of URL and unknown hosts", async () => {

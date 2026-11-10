@@ -30,6 +30,9 @@ providers:
   github:
     enabled: true
     token_env: GITHUB_TOKEN
+  pagerduty:
+    enabled: true
+    token_env: PAGERDUTY_TOKEN   # REST API key or user token, read-only is enough
 
 watch:
   poll_interval_seconds: 60
@@ -37,7 +40,8 @@ watch:
 # Buttons shown in the dashboard. Add entries here; no code change needed.
 #   kind: session -> starts a new Claude session with `prompt`
 #   kind: watch   -> polls a pipeline run and raises a status when it needs you
-#   accepts: pr | run -> what kind of URL the button expects (read from the clipboard)
+#   accepts: pr | run | incident -> what kind of URL the button expects (read from the clipboard)
+#   prompt placeholders: {url} {title} {provider} {details} (details = data the provider prefetches, e.g. PagerDuty alerts)
 actions:
   - key: review_pr
     label: Review PR
@@ -62,6 +66,28 @@ actions:
       whether it is caused by the code change, the pipeline definition, the agent or environment, or
       something transient, and the fix you recommend. Do not re-run, cancel or edit the pipeline,
       push code, or change any cloud resources. Investigate and report only.
+    permission_mode:           # empty = use the workspace's Claude settings
+    allowed_tools: []
+  - key: analyze_pagerduty
+    label: Analyze PagerDuty Incident
+    kind: session
+    accepts: incident
+    name: "Incident: {title}"
+    prompt: |
+      Analyze the PagerDuty incident at {url}.
+      The dashboard prefetched the incident, its alerts and its timeline:
+
+      {details}
+
+      Work out what is actually wrong: identify the affected service and resource, then gather
+      evidence with the read-only tools available in this workspace (logs, metrics, Kubernetes state,
+      recent deployments and pipeline runs, Azure resource health). Then report:
+      1. What fired and why, in one paragraph.
+      2. Root cause (or the leading hypotheses, ranked), with the evidence for each.
+      3. Whether it is ongoing, self-resolved, or noise (threshold or alert-rule problem).
+      4. Recommended fixes: an immediate mitigation, the durable fix, and any alert tuning.
+      Do not acknowledge, resolve, reassign or comment on the incident, and do not change any cloud,
+      cluster or pipeline resources. Investigate and report only.
     permission_mode:           # empty = use the workspace's Claude settings
     allowed_tools: []
   - key: watch_pipeline

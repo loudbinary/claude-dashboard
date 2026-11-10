@@ -1,5 +1,5 @@
 export interface StatusStyle { label: string; color: string; attention: boolean }
-export interface Action { key: string; label: string; kind: "session" | "watch"; accepts?: "pr" | "run" }
+export interface Action { key: string; label: string; kind: "session" | "watch"; accepts?: "pr" | "run" | "incident" }
 export interface AppConfig { actions: Action[]; status: Record<string, StatusStyle>; inactive_after_minutes: number; seen_color: string; providers: string[]; default_cwd: string }
 
 export interface Session {

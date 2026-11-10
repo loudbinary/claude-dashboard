@@ -52,6 +52,7 @@ Tokens are read from environment variables named in `config.yaml`; they are neve
 |---|---|---|
 | Azure DevOps | `AZDO_PAT` | Build (Read) |
 | GitHub | `GITHUB_TOKEN` | `actions:read` on the repos you watch |
+| PagerDuty | `PAGERDUTY_TOKEN` | Read-only REST API key or user token |
 
 ## Configuration
 
@@ -68,7 +69,7 @@ actions:
   - key: review_pr          # unique id
     label: Review PR        # button text
     kind: session           # session = start a Claude session, watch = poll a pipeline run
-    accepts: pr             # pr | run: the kind of URL expected
+    accepts: pr             # pr | run | incident: the kind of URL expected
     name: "PR review: {title}"
     prompt: "Review the pull request at {url}. ..."
     permission_mode:        # empty = use the workspace's Claude settings
@@ -76,12 +77,17 @@ actions:
 ```
 
 A click reads the clipboard (the browser asks for permission once) or the URL box if you typed one. `{url}`, `{title}`
-and `{provider}` are filled into `prompt` and `name`. Recognized URLs:
+and `{provider}` are filled into `prompt` and `name`. `{details}` is filled with data the provider prefetches; for a
+PagerDuty incident that is the incident, up to 10 alerts with their payloads, and its timeline, so the
+"Analyze PagerDuty Incident" session starts with the alert content without needing PagerDuty access itself.
+Recognized URLs:
 
 | | Pull request | Pipeline run |
 |---|---|---|
 | Azure DevOps | `dev.azure.com/{org}/{project}/_git/{repo}/pullrequest/{id}` | `dev.azure.com/{org}/{project}/_build/results?buildId={id}` |
 | GitHub | `github.com/{owner}/{repo}/pull/{n}` | `github.com/{owner}/{repo}/actions/runs/{id}` |
+
+PagerDuty incidents: `{subdomain}.pagerduty.com/incidents/{id}` (any trailing path, such as `/timeline`).
 
 Sessions started by a button run headless (`claude -p`), so they cannot stop to ask for permission. Give the review
 action the tools it needs through `allowed_tools`; the session needs `gh` or `az` signed in to read a private PR.
@@ -118,6 +124,9 @@ Set under `ui.status`. States with `attention: true` sort to the top, tint the r
   state changes, for example Claude finishes another turn and is waiting on you again.
   Popups for pipelines stay until you dismiss them; dismissing one marks the pipeline seen.
 - **Rename**: click the pencil or edit the title in the detail panel. Names are stored in the dashboard database only.
+- **Right-click a session row**: Rename, Mark seen, or Remove from dashboard. Remove deletes only the dashboard's
+  record; the Claude session and transcript are untouched, and a terminal session still running reappears on its
+  next hook event.
 - **Reply**: sessions started from the dashboard can be answered in the detail panel (resumed by session id).
   Sessions running in a terminal are observed only; reply in the terminal.
 - **Session notes**: read from the transcript file Claude Code reports, so they appear only on the machine that ran the session.

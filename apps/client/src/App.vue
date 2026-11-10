@@ -101,6 +101,32 @@ async function commitRename(s: Session) {
 /** Clicking a session row expands its details underneath; clicking it again collapses them. */
 function toggle(id: string) { selectedId.value = selectedId.value === id ? null : id; }
 
+/** Right-clicking a session row opens a small menu (rename, mark seen, remove). Text selections keep the browser menu. */
+const rowMenu = ref<{ x: number; y: number; session: Session } | null>(null);
+function openRowMenu(ev: MouseEvent, s: Session) {
+  if ((ev.target as HTMLElement).closest("input, textarea") || String(window.getSelection() ?? "").trim()) return;
+  ev.preventDefault();
+  rowMenu.value = { x: Math.min(ev.clientX, window.innerWidth - 200), y: Math.min(ev.clientY, window.innerHeight - 130), session: s };
+}
+const closeRowMenu = () => { rowMenu.value = null; };
+const onMenuKey = (ev: KeyboardEvent) => { if (ev.key === "Escape") closeRowMenu(); };
+watch(rowMenu, (open, was) => {
+  const on = open && !was, off = !open && was;
+  if (!on && !off) return;
+  const fn = (on ? window.addEventListener : window.removeEventListener).bind(window);
+  fn("pointerdown", closeRowMenu); fn("blur", closeRowMenu); fn("keydown", onMenuKey as EventListener); fn("scroll", closeRowMenu, true);
+});
+function menuRename() { const s = rowMenu.value?.session; closeRowMenu(); if (s) startRename(s); }
+function menuSeen() { const s = rowMenu.value?.session; closeRowMenu(); if (s) markSeen("s", s.id); }
+async function menuRemove() {
+  const s = rowMenu.value?.session; closeRowMenu();
+  if (!s || !confirm(`Remove "${s.name ?? s.default_name}" from the dashboard?
+
+This only removes the dashboard record; the Claude session and its transcript are untouched. A terminal session that is still running will reappear on its next hook event.`)) return;
+  try { await api.removeSession(s.id); if (selectedId.value === s.id) selectedId.value = null; }
+  catch (err) { toast((err as Error).message, true); }
+}
+
 async function removeWatch(w: Watch) {
   try { await api.removeWatch(w.id); } catch (err) { toast((err as Error).message, true); }
 }
@@ -138,7 +164,7 @@ onMounted(async () => {
   );
   clock = setInterval(() => (now.value = Date.now()), 15_000);
 });
-onUnmounted(() => { clearInterval(clock); window.removeEventListener("hashchange", openFromHash); document.removeEventListener("visibilitychange", autoSeen); });
+onUnmounted(() => { closeRowMenu(); clearInterval(clock); window.removeEventListener("hashchange", openFromHash); document.removeEventListener("visibilitychange", autoSeen); });
 </script>
 
 <template>
@@ -182,7 +208,7 @@ onUnmounted(() => { clearInterval(clock); window.removeEventListener("hashchange
           <tbody>
             <template v-for="s in sorted" :key="s.id">
             <tr :style="{ '--row': rowColor(shownState(s), s.seen) }" :aria-expanded="s.id === selectedId"
-                :class="{ attention: needsYou(shownState(s)), seen: isSeen(shownState(s), s.seen), selected: s.id === selectedId }" @click="toggle(s.id)">
+                :class="{ attention: needsYou(shownState(s)), seen: isSeen(shownState(s), s.seen), selected: s.id === selectedId }" @click="toggle(s.id)" @contextmenu="openRowMenu($event, s)">
               <td class="status"><StatusChip :state="shownState(s)" :styles="styles" :seen="!!s.seen" /></td>
               <td>
                 <input v-if="editing === s.id" v-model="draft" class="rename" aria-label="Session name" autofocus @click.stop
@@ -208,6 +234,12 @@ onUnmounted(() => { clearInterval(clock); window.removeEventListener("hashchange
         </table>
       </section>
     </main>
+
+    <div v-if="rowMenu" class="ctx-menu" role="menu" :style="{ left: rowMenu.x + 'px', top: rowMenu.y + 'px' }" @pointerdown.stop>
+      <button role="menuitem" @click="menuRename">Rename</button>
+      <button v-if="needsYou(shownState(rowMenu.session)) && !rowMenu.session.seen" role="menuitem" @click="menuSeen">Mark seen</button>
+      <button role="menuitem" class="danger" @click="menuRemove">Remove from dashboard</button>
+    </div>
 
     <div class="toasts" role="status">
       <div v-for="t in toasts" :key="t.id" class="toast" :class="{ error: t.error }">
