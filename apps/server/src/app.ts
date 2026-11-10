@@ -205,9 +205,13 @@ export function createApp(deps: AppDeps) {
     if (m === "GET" && existsSync(clientDir)) {
       const rel = normalize(path === "/" ? "index.html" : path.slice(1));
       if (!rel.startsWith("..")) {
+        // index.html names the current build's hashed assets, so the browser must revalidate it on every
+        // load; otherwise a cached copy keeps running an older client after a rebuild.
+        const page = () => new Response(Bun.file(join(clientDir, "index.html")), { headers: { "Cache-Control": "no-cache" } });
+        if (rel === "index.html") return page();
         const f = Bun.file(join(clientDir, rel));
         if (await f.exists()) return new Response(f);
-        if (!path.startsWith("/api")) return new Response(Bun.file(join(clientDir, "index.html")));
+        if (!path.startsWith("/api")) return page();
       }
     }
     return fail(404, "Not found");
