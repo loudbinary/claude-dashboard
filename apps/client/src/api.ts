@@ -27,6 +27,7 @@ export const api = {
   config: () => call<AppConfig>("/api/config"),
   sessions: () => call<Session[]>("/api/sessions"),
   newSession: (prompt: string, cwd: string, name: string) => call<{ session_id: string }>("/api/sessions", "POST", { prompt, cwd, name }),
+  resumeSession: (session: string, prompt: string, cwd: string) => call<{ session_id: string }>("/api/sessions/resume", "POST", { session, prompt, cwd }),
   session: (id: string) => call<SessionDetail>(`/api/sessions/${encodeURIComponent(id)}`),
   rename: (id: string, name: string) => call<Session>(`/api/sessions/${encodeURIComponent(id)}`, "PATCH", { name }),
   removeSession: (id: string) => call(`/api/sessions/${encodeURIComponent(id)}`, "DELETE"),

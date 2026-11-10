@@ -102,3 +102,4 @@ input:focus, textarea:focus, button:focus-visible { outline: 2px solid var(--acc
 .md th, .md td { border: 1px solid var(--line); padding: 4px 8px; text-align: left; }
 .md th { background: var(--bg); }
 .md hr { border: 0; border-top: 1px solid var(--line); margin: 12px 0; }
+.new-session .hint { flex: 1; font-size: 12px; align-self: center; }

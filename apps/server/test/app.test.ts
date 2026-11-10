@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import { createApp } from "../src/app";
 import { deepMerge, loadConfig } from "../src/config";
 import { Store } from "../src/db";
-import { buildArgs } from "../src/launcher";
+import { buildArgs, makeStreamHandler } from "../src/launcher";
 import { azureDevOps, pendingApprovalStages } from "../src/providers/azureDevOps";
 import { github } from "../src/providers/github";
 import { nextState, normalizeHook } from "../src/state";
@@ -168,6 +168,18 @@ describe("app", () => {
     expect((await handle(post("/api/sessions", { prompt: "  " }))).status).toBe(400);
   });
 
+  test("resume matches a known session by name, else passes the name to the CLI", async () => {
+    const { handle, store, launched } = setup();
+    store.upsertSession("11111111-1111-1111-1111-111111111111", { source: "hook", cwd: import.meta.dir, default_name: "first prompt" });
+    store.renameSession("11111111-1111-1111-1111-111111111111", "Marketplace deploy");
+    let res = await handle(post("/api/sessions/resume", { session: "marketplace DEPLOY" }));
+    expect(res.status).toBe(201);
+    expect(launched[0]).toMatchObject({ resume: "11111111-1111-1111-1111-111111111111", cwd: import.meta.dir, prompt: "Continue where you left off." });
+    res = await handle(post("/api/sessions/resume", { session: "Some terminal session", prompt: "status?", cwd: import.meta.dir }));
+    expect(launched[1]).toMatchObject({ resume: "Some terminal session", prompt: "status?" });
+    expect((await handle(post("/api/sessions/resume", { session: " " }))).status).toBe(400);
+  });
+
   test("notes fall back to what the dashboard recorded when there is no transcript", async () => {
     const { handle, store } = setup();
     store.upsertSession("dash", { source: "dashboard" });
@@ -183,6 +195,29 @@ describe("app", () => {
     expect((await handle(post("/api/actions/review_pr", { url: "https://github.com/o/r/pull/1" }, { origin: "http://localhost:5173" }))).status).toBe(201);
     const plain = new Request("http://127.0.0.1/api/actions/review_pr", { method: "POST", headers: { "content-type": "text/plain" }, body: '{"url":"https://github.com/o/r/pull/1"}' });
     expect((await handle(plain)).status).toBe(400);
+  });
+});
+
+describe("launcher stream", () => {
+  const line = (o: unknown) => JSON.stringify(o);
+  test("resumed terminal session becomes answerable and takes its Claude title", () => {
+    const store = new Store(":memory:");
+    let started = "";
+    const h = makeStreamHandler(store, { prompt: "go on", resume: "My title" }, "/fallback", () => {}, (id) => (started = id));
+    h.handle(line({ type: "system", subtype: "session_title_changed", title: "My title", session_id: "abc" }));
+    h.handle(line({ type: "system", subtype: "init", session_id: "abc", cwd: "/w" }));
+    h.handle(line({ type: "assistant", message: { content: [{ type: "text", text: "**done**" }] } }));
+    h.handle(line({ type: "result", is_error: false, result: "**done**", session_id: "abc" }));
+    expect(started).toBe("abc");
+    expect(store.getSession("abc")).toMatchObject({ source: "dashboard", state: "waiting_reply", default_name: "My title", cwd: "/w", last_message: "**done**" });
+    expect(store.sessionEvents("abc").map((e) => e.type)).toEqual(["UserPromptSubmit", "AssistantMessage"]);
+  });
+  test("an error before the session starts creates no session", () => {
+    const store = new Store(":memory:");
+    const h = makeStreamHandler(store, { prompt: "x", resume: "nope" }, "/f", () => {}, () => {});
+    h.handle(line({ type: "result", subtype: "error_during_execution", is_error: true, session_id: "ghost" }));
+    expect(store.listSessions().length).toBe(0);
+    expect(h.state.started).toBe(false);
   });
 });
 

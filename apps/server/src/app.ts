@@ -113,6 +113,32 @@ export function createApp(deps: AppDeps) {
       }
     }
 
+    // Resume a session by name or id. Sessions the dashboard knows are matched first (by id, then by
+    // name); anything else is handed to the Claude CLI, which resolves ids and its own session titles.
+    if (path === "/api/sessions/resume" && m === "POST") {
+      const b = await body(req);
+      const wanted = b?.session?.trim();
+      if (!wanted) return fail(400, "Expected JSON { session, prompt?, cwd? }");
+      const all = store.listSessions(); // most recently updated first
+      const lower = wanted.toLowerCase();
+      const known = all.find((s) => s.id === wanted)
+        ?? all.find((s) => (s.name ?? s.default_name).toLowerCase() === lower)
+        ?? all.find((s) => s.default_name.toLowerCase() === lower);
+      const cwd = b.cwd?.trim() || known?.cwd || cfg.claude.default_cwd;
+      if (!existsSync(cwd)) return fail(400, `Working folder does not exist: ${cwd}`);
+      try {
+        const id = await launch({
+          prompt: b.prompt?.trim() || "Continue where you left off.",
+          resume: known?.id ?? wanted, cwd,
+          permission_mode: cfg.claude.new_session?.permission_mode,
+          allowed_tools: cfg.claude.new_session?.allowed_tools,
+        }, onSession);
+        return json({ session_id: id }, 201);
+      } catch (err) {
+        return fail(502, (err as Error).message);
+      }
+    }
+
     const sm = path.match(/^\/api\/sessions\/([^/]+)(\/reply)?$/);
     if (sm) {
       const id = decodeURIComponent(sm[1]!);

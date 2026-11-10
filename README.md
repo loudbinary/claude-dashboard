@@ -91,6 +91,10 @@ Set under `ui.status`. States with `attention: true` sort to the top, tint the r
 - **New session**: starts a Claude CLI session (`claude -p`) in the folder you choose. Start sessions here rather than
   in a terminal and every one of them can be followed and answered from the dashboard. They run headless, so they
   cannot stop to ask for permission; set `claude.new_session.permission_mode` and `allowed_tools` in the config.
+- **Resume session**: asks for a session name or id and continues it with `claude -p --resume`. Names of sessions
+  already in the dashboard are matched first; any other value is passed to the Claude CLI, which accepts a session id
+  or the session's own title. A resumed terminal session becomes answerable from the dashboard. Close it in the
+  terminal first so two processes are not writing to the same session.
 - **Rename**: click the pencil or edit the title in the detail panel. Names are stored in the dashboard database only.
 - **Reply**: sessions started from the dashboard can be answered in the detail panel (resumed by session id).
   Sessions running in a terminal are observed only; reply in the terminal.

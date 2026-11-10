@@ -5,10 +5,13 @@ export interface LaunchOptions {
   prompt: string;
   name?: string;
   cwd?: string;
+  /** Session id, or a session title the Claude CLI can resolve. */
   resume?: string;
   permission_mode?: string;
   allowed_tools?: string[];
 }
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** CLI arguments for a headless Claude Code run that streams JSON lines. */
 export function buildArgs(cfg: Config, o: LaunchOptions): string[] {
@@ -18,6 +21,44 @@ export function buildArgs(cfg: Config, o: LaunchOptions): string[] {
   if (o.permission_mode) args.push("--permission-mode", o.permission_mode);
   if (o.allowed_tools?.length) args.push("--allowedTools", o.allowed_tools.join(","));
   return [...args, ...(cfg.claude.extra_args ?? [])];
+}
+
+/**
+ * Applies one line of `claude -p --output-format stream-json` output to the store.
+ * Returned by makeStreamHandler so it can be tested without spawning the CLI.
+ */
+export function makeStreamHandler(store: Store, o: LaunchOptions, fallbackCwd: string, onChange: (s: Session) => void, onStarted: (id: string) => void) {
+  const state = { sessionId: null as string | null, started: false, finished: false, title: null as string | null };
+  const update = (patch: Partial<Session>) => { if (state.sessionId) onChange(store.upsertSession(state.sessionId, patch)); };
+
+  function handle(line: string) {
+    let msg: any;
+    try { msg = JSON.parse(line); } catch { return; }
+    if (msg.type === "system" && msg.subtype === "session_title_changed" && typeof msg.title === "string") {
+      state.title = msg.title;
+    } else if (msg.type === "system" && msg.subtype === "init" && msg.session_id) {
+      state.sessionId = msg.session_id;
+      state.started = true;
+      const known = store.getSession(msg.session_id);
+      // A session the dashboard has not seen before takes the name given here, or its Claude title.
+      const defaultName = !o.resume ? o.name : known ? undefined : state.title ?? undefined;
+      update({ source: "dashboard", state: "working", last_prompt: o.prompt, cwd: msg.cwd ?? o.cwd ?? fallbackCwd,
+               ...(defaultName ? { default_name: defaultName } : {}) });
+      // Recorded here so the session is complete in the dashboard even when hooks are not installed.
+      store.addEvent(msg.session_id, "UserPromptSubmit", { prompt: o.prompt, via: "dashboard" });
+      onStarted(msg.session_id);
+    } else if (!state.started) {
+      // Anything before init (for example an error result for an unknown session) is not a session.
+      return;
+    } else if (msg.type === "assistant") {
+      const text = (msg.message?.content ?? []).filter((p: any) => p?.type === "text").map((p: any) => p.text).join("\n").trim();
+      if (text) { store.addEvent(state.sessionId!, "AssistantMessage", { text }); update({ last_message: text }); }
+    } else if (msg.type === "result") {
+      state.finished = true;
+      update({ state: msg.is_error ? "failed" : "waiting_reply", ...(typeof msg.result === "string" ? { last_message: msg.result } : {}) });
+    }
+  }
+  return { handle, state, update };
 }
 
 /**
@@ -33,29 +74,8 @@ export function launch(cfg: Config, store: Store, o: LaunchOptions, onChange: (s
       return reject(new Error(`Could not start "${cfg.claude.command}": ${(err as Error).message}`));
     }
 
-    let sessionId: string | null = o.resume ?? null;
-    let finished = false;
-    const update = (patch: Partial<Session>) => { if (sessionId) onChange(store.upsertSession(sessionId, patch)); };
-
-    const handle = (line: string) => {
-      let msg: any;
-      try { msg = JSON.parse(line); } catch { return; }
-      if (msg.type === "system" && msg.subtype === "init" && msg.session_id) {
-        sessionId = msg.session_id;
-        update({ source: "dashboard", state: "working", last_prompt: o.prompt, cwd: msg.cwd ?? o.cwd ?? cfg.claude.default_cwd,
-                 ...(o.name && !o.resume ? { default_name: o.name } : {}) });
-        // Recorded here so the session is complete in the dashboard even when hooks are not installed.
-        store.addEvent(sessionId!, "UserPromptSubmit", { prompt: o.prompt, via: "dashboard" });
-        resolveId(sessionId!);
-      } else if (msg.type === "assistant" && sessionId) {
-        const text = (msg.message?.content ?? []).filter((p: any) => p?.type === "text").map((p: any) => p.text).join("\n").trim();
-        if (text) { store.addEvent(sessionId, "AssistantMessage", { text }); update({ last_message: text }); }
-      } else if (msg.type === "result") {
-        finished = true;
-        if (msg.session_id) sessionId = msg.session_id;
-        update({ state: msg.is_error ? "failed" : "waiting_reply", last_message: typeof msg.result === "string" ? msg.result : null });
-      }
-    };
+    const { handle, state, update } = makeStreamHandler(store, o, cfg.claude.default_cwd, onChange, resolveId);
+    const stderr = new Response(proc.stderr as ReadableStream).text();
 
     (async () => {
       let buf = "";
@@ -67,11 +87,10 @@ export function launch(cfg: Config, store: Store, o: LaunchOptions, onChange: (s
       }
       if (buf.trim()) handle(buf);
       const code = await proc.exited;
-      if (!finished) {
-        const err = (await new Response(proc.stderr as ReadableStream).text()).trim().slice(-500);
-        if (sessionId) update({ state: "failed", last_message: err || `claude exited with code ${code}` });
-        else reject(new Error(err || `claude exited with code ${code} before starting a session`));
-      }
+      if (state.finished) return;
+      const err = (await stderr).trim().slice(-600) || `claude exited with code ${code}`;
+      if (state.started) update({ state: "failed", last_message: err });
+      else reject(new Error(o.resume && !UUID.test(o.resume) ? `Could not resume "${o.resume}": ${err}` : err));
     })().catch(reject);
   });
 }
