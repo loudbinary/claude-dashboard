@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, isAbsolute, resolve } from "node:path";
 import { parse } from "yaml";
+import type { NotificationsConfig } from "./notifier";
 
 export interface StatusStyle { label: string; color: string; attention: boolean }
 
@@ -28,7 +29,12 @@ export interface Config {
   watch: { poll_interval_seconds: number };
   actions: ActionConfig[];
   ui: { inactive_after_minutes: number; status: Record<string, StatusStyle> };
+  notifications: NotificationsConfig;
 }
+
+const notificationDefaults: NotificationsConfig = {
+  enabled: true, states: [], scenario: "reminder", delay_seconds: 15, base_url: null, app_name: "Claude Dashboard",
+};
 
 type Obj = Record<string, unknown>;
 const isObj = (v: unknown): v is Obj => typeof v === "object" && v !== null && !Array.isArray(v);
@@ -49,6 +55,8 @@ export function loadConfig(path = process.env.CLAUDE_DASHBOARD_CONFIG ?? resolve
   let cfg = parse(readFileSync(path, "utf8")) as Config;
   const local = path.replace(/\.ya?ml$/, ".local.yaml");
   if (existsSync(local)) cfg = deepMerge(cfg, parse(readFileSync(local, "utf8")));
+  cfg.notifications = deepMerge(notificationDefaults, cfg.notifications ?? {});
+  if (!["reminder", "default"].includes(cfg.notifications.scenario)) throw new Error(`notifications.scenario must be "reminder" or "default"`);
 
   const base = dirname(path);
   const abs = (p: string) => (isAbsolute(p) ? p : resolve(base, p));

@@ -55,6 +55,16 @@ actions:
     kind: watch
     accepts: run
 
+# Windows toast when a session or watch needs you. Clicking it opens the dashboard on that session.
+# The toast is withdrawn once the item no longer needs you. Windows only; ignored elsewhere.
+notifications:
+  enabled: true
+  states: []               # empty = every status below marked attention: true
+  scenario: reminder       # reminder = stays on screen until clicked | default = slides into the notification centre
+  delay_seconds: 15        # skip the toast if you answer within this long
+  base_url:                # empty = http://<server.host>:<server.port>
+  app_name: Claude Dashboard
+
 ui:
   inactive_after_minutes: 120
   status:

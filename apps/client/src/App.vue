@@ -61,8 +61,18 @@ async function removeWatch(w: Watch) {
   try { await api.removeWatch(w.id); } catch (err) { toast((err as Error).message, true); }
 }
 
+/** `#session=<id>` (what a Windows toast opens) selects that session, then the hash is cleared. */
+function openFromHash() {
+  const id = new URLSearchParams(location.hash.slice(1)).get("session");
+  if (!id) return;
+  selectedId.value = id;
+  history.replaceState(null, "", location.pathname + location.search);
+}
+
 let clock: ReturnType<typeof setInterval>;
 onMounted(async () => {
+  openFromHash();
+  window.addEventListener("hashchange", openFromHash);
   try { config.value = await api.config(); } catch (err) { toast((err as Error).message, true); }
   stream(
     (m) => {
@@ -79,7 +89,7 @@ onMounted(async () => {
   );
   clock = setInterval(() => (now.value = Date.now()), 15_000);
 });
-onUnmounted(() => clearInterval(clock));
+onUnmounted(() => { clearInterval(clock); window.removeEventListener("hashchange", openFromHash); });
 </script>
 
 <template>
