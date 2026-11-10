@@ -28,7 +28,7 @@ export interface Config {
   providers: { azure_devops: ProviderConfig; github: ProviderConfig };
   watch: { poll_interval_seconds: number };
   actions: ActionConfig[];
-  ui: { inactive_after_minutes: number; status: Record<string, StatusStyle> };
+  ui: { inactive_after_minutes: number; status: Record<string, StatusStyle>; seen_color?: string };
   notifications: NotificationsConfig;
 }
 

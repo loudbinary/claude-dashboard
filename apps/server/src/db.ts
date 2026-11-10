@@ -16,6 +16,8 @@ export interface Session {
   source: "hook" | "dashboard";
   created_at: number;
   updated_at: number;
+  /** 1 once you have seen the session in its current attention episode; reset when its state changes. */
+  seen: number;
 }
 
 export interface Watch {
@@ -28,6 +30,8 @@ export interface Watch {
   active: number;
   created_at: number;
   updated_at: number;
+  /** 1 once you have seen the watch in its current state; reset when its state changes. */
+  seen: number;
 }
 
 export interface EventRow { id: number; session_id: string; type: string; payload: string; ts: number }
@@ -55,6 +59,11 @@ export class Store {
         state TEXT NOT NULL, detail TEXT, active INTEGER NOT NULL DEFAULT 1,
         created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
     `);
+    // Databases from before 'seen' existed: add the column (existing rows start unseen).
+    for (const table of ['sessions', 'watches']) {
+      const cols = this.db.query(`PRAGMA table_info(${table})`).all() as { name: string }[];
+      if (!cols.some((c) => c.name === 'seen')) this.db.exec(`ALTER TABLE ${table} ADD COLUMN seen INTEGER NOT NULL DEFAULT 0`);
+    }
   }
 
   getSession(id: string): Session | null {
@@ -73,15 +82,17 @@ export class Store {
       name: null,
       default_name: patch.cwd ? basename(patch.cwd) : id.slice(0, 8),
       cwd: null, transcript_path: null, state: "idle", last_prompt: null, last_message: null,
-      source: "hook", created_at: now,
+      source: "hook", created_at: now, seen: 0,
       ...cur,
       ...Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined)),
       updated_at: now,
     } as Session;
+    // A new state is a new episode: whatever you had seen before no longer counts.
+    if (cur && patch.state && patch.state !== cur.state && patch.seen === undefined) s.seen = 0;
     this.db.query(`INSERT OR REPLACE INTO sessions
-      (id, name, default_name, cwd, transcript_path, state, last_prompt, last_message, source, created_at, updated_at)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run(
-      s.id, s.name, s.default_name, s.cwd, s.transcript_path, s.state, s.last_prompt, s.last_message, s.source, s.created_at, s.updated_at);
+      (id, name, default_name, cwd, transcript_path, state, last_prompt, last_message, source, created_at, updated_at, seen)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+      s.id, s.name, s.default_name, s.cwd, s.transcript_path, s.state, s.last_prompt, s.last_message, s.source, s.created_at, s.updated_at, s.seen);
     return s;
   }
 
@@ -108,6 +119,12 @@ export class Store {
   addEvent(sessionId: string, type: string, payload: Record<string, unknown>, now = Date.now()) {
     this.db.query("INSERT INTO events (session_id, type, payload, ts) VALUES (?,?,?,?)")
       .run(sessionId, type, JSON.stringify(payload), now);
+  }
+
+  /** Marks a session as seen without touching its updated time. */
+  markSeen(id: string): Session | null {
+    this.db.query("UPDATE sessions SET seen = 1 WHERE id = ?").run(id);
+    return this.getSession(id);
   }
 
   renameSession(id: string, name: string | null): Session | null {
@@ -143,9 +160,16 @@ export class Store {
     const cur = this.db.query("SELECT * FROM watches WHERE id = ?").get(id) as Watch | null;
     if (!cur) return null;
     const w = { ...cur, ...patch, updated_at: now };
-    this.db.query("UPDATE watches SET state=?, detail=?, title=?, active=?, updated_at=? WHERE id=?")
-      .run(w.state, w.detail, w.title, w.active, w.updated_at, id);
+    if (patch.state !== undefined && patch.state !== cur.state) w.seen = 0;
+    this.db.query("UPDATE watches SET state=?, detail=?, title=?, active=?, updated_at=?, seen=? WHERE id=?")
+      .run(w.state, w.detail, w.title, w.active, w.updated_at, w.seen, id);
     return w;
+  }
+
+  /** Marks a watch as seen without touching its updated time. */
+  markWatchSeen(id: number): Watch | null {
+    this.db.query("UPDATE watches SET seen = 1 WHERE id = ?").run(id);
+    return this.db.query("SELECT * FROM watches WHERE id = ?").get(id) as Watch | null;
   }
 
   deleteWatch(id: number) {

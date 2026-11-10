@@ -8,8 +8,9 @@ import type { Session, Watch } from "./db";
  * Watches every broadcast and remembers the last state of each session and watch. When one moves
  * into an attention state and is still there `delay_seconds` later, a toast is shown. In "reminder"
  * mode the toast stays on screen until you click or dismiss it, and clicking opens the dashboard on
- * that session. When the item leaves the attention state (you replied, it was removed) its toast is
- * withdrawn, so stale toasts do not pile up.
+ * that session. When the item leaves the attention state (you replied, it was removed) or is marked
+ * seen in the dashboard, its toast is withdrawn, so stale toasts do not pile up. A seen item never
+ * toasts again until its state changes.
  */
 
 export interface NotificationsConfig {
@@ -29,7 +30,7 @@ export interface NotificationsConfig {
 export interface Toast { tag: string; title: string; body: string; url: string }
 export interface ToastBackend { show(t: Toast): void; remove(tag: string): void }
 
-type Item = { key: string; state: string; title: string; body: string; url: string };
+type Item = { key: string; state: string; seen: boolean; title: string; body: string; url: string };
 type Msg = Parameters<Broadcast>[0];
 
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
@@ -49,13 +50,13 @@ export function createNotifier(cfg: Config, backend: ToastBackend, seed: { sessi
   for (const w of seed.watches) last.set(`w:${w.id}`, w.state);
 
   const fromSession = (s: Session): Item => ({
-    key: `s:${s.id}`, state: s.state,
+    key: `s:${s.id}`, state: s.state, seen: !!s.seen,
     title: `${label(s.state)}: ${clip(s.name ?? s.default_name, 60)}`,
     body: clip((s.last_message ?? "").replace(/\s+/g, " ").trim() || (s.cwd ?? ""), 180),
     url: `${base}/#session=${encodeURIComponent(s.id)}`,
   });
   const fromWatch = (w: Watch): Item => ({
-    key: `w:${w.id}`, state: w.state,
+    key: `w:${w.id}`, state: w.state, seen: !!w.seen,
     title: `${label(w.state)}: ${clip(w.title, 60)}`, body: w.url, url: `${base}/`,
   });
 
@@ -68,6 +69,8 @@ export function createNotifier(cfg: Config, backend: ToastBackend, seed: { sessi
     const prev = last.get(item.key);
     last.set(item.key, item.state);
     if (!states.has(item.state)) return cancel(item.key);
+    // Seen in the dashboard: no toast, and any toast already on screen is withdrawn.
+    if (item.seen) return cancel(item.key);
     if (prev === item.state) return;
     cancel(item.key);
     timers.set(item.key, setTimeout(() => {

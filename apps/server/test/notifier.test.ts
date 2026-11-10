@@ -60,4 +60,33 @@ describe("notifier", () => {
     expect(shown).toHaveLength(1);
     expect(removed).toEqual(["s:abc"]);
   });
+
+  test("a seen session does not toast, is withdrawn when seen, and toasts again in its next episode", async () => {
+    const { notify, shown, removed } = setup();
+    notify({ type: "session", data: session("waiting_reply") });
+    await tick();
+    expect(shown).toHaveLength(1);
+    // Marked seen in the dashboard: the toast on screen is withdrawn.
+    notify({ type: "session", data: session("waiting_reply", { seen: 1 } as Partial<Session>) });
+    expect(removed).toEqual(["s:abc"]);
+    // Hooks keep reporting the same state (e.g. idle reminders): still nothing new.
+    notify({ type: "session", data: session("waiting_reply", { seen: 1 } as Partial<Session>) });
+    await tick();
+    expect(shown).toHaveLength(1);
+    // It moves on and then needs you again: a new episode, unseen, so a new toast.
+    notify({ type: "session", data: session("working") });
+    notify({ type: "session", data: session("waiting_reply") });
+    await tick();
+    expect(shown).toHaveLength(2);
+  });
+
+  test("marking an item seen before its delay ends means it never toasts", async () => {
+    const shown: Toast[] = [];
+    const slow = createNotifier({ ...cfg, notifications: { ...cfg.notifications, delay_seconds: 0.05 } },
+      { show: (t) => shown.push(t), remove: () => {} }, { sessions: [], watches: [] });
+    slow({ type: "session", data: session("needs_permission") });
+    slow({ type: "session", data: session("needs_permission", { seen: 1 } as Partial<Session>) });
+    await new Promise((r) => setTimeout(r, 90));
+    expect(shown).toHaveLength(0);
+  });
 });

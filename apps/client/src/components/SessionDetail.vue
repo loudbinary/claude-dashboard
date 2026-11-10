@@ -112,7 +112,7 @@ async function remove() {
       <button class="ghost" aria-label="Close" @click="emit('close')">✕</button>
     </header>
     <div class="meta">
-      <StatusChip :state="session.state" :styles="styles" />
+      <StatusChip :state="session.state" :styles="styles" :seen="!!session.seen" />
       <span>{{ session.source === "dashboard" ? "Started from dashboard" : "Terminal session" }}</span>
       <span class="mono">{{ session.cwd }}</span>
       <span class="mono">{{ session.id }}</span>

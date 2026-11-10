@@ -88,6 +88,7 @@ export function createApp(deps: AppDeps) {
         actions: cfg.actions.map(({ key, label, kind, accepts }) => ({ key, label, kind, accepts })),
         status: cfg.ui.status,
         inactive_after_minutes: cfg.ui.inactive_after_minutes,
+        seen_color: cfg.ui.seen_color ?? "#667085",
         providers: providers.map((p) => p.key),
         default_cwd: cfg.claude.default_cwd,
       });
@@ -139,11 +140,16 @@ export function createApp(deps: AppDeps) {
       }
     }
 
-    const sm = path.match(/^\/api\/sessions\/([^/]+)(\/reply)?$/);
+    const sm = path.match(/^\/api\/sessions\/([^/]+)(\/reply|\/seen)?$/);
     if (sm) {
       const id = decodeURIComponent(sm[1]!);
       const s = store.getSession(id);
       if (!s) return fail(404, "Session not found");
+      if (sm[2] === "/seen" && m === "POST") {
+        const next = store.markSeen(id)!;
+        onSession(next);
+        return json(next);
+      }
       if (!sm[2] && m === "GET") {
         const events = store.sessionEvents(id);
         let notes: Note[] = readNotes(s.transcript_path);
@@ -171,7 +177,7 @@ export function createApp(deps: AppDeps) {
         broadcast({ type: "session_deleted", data: { id } });
         return json({});
       }
-      if (sm[2] && m === "POST") {
+      if (sm[2] === "/reply" && m === "POST") {
         const b = await body(req);
         if (!b?.text?.trim()) return fail(400, "Expected JSON { text }");
         if (s.source !== "dashboard") return fail(409, "Only sessions started from the dashboard can be answered here. Reply in the terminal for this one.");
@@ -194,8 +200,14 @@ export function createApp(deps: AppDeps) {
     }
 
     if (path === "/api/watches" && m === "GET") return json(store.listWatches());
-    const wm = path.match(/^\/api\/watches\/(\d+)$/);
-    if (wm && m === "DELETE") {
+    const wm = path.match(/^\/api\/watches\/(\d+)(\/seen)?$/);
+    if (wm && wm[2] && m === "POST") {
+      const w = store.markWatchSeen(Number(wm[1]));
+      if (!w) return fail(404, "Watch not found");
+      broadcast({ type: "watch", data: w });
+      return json(w);
+    }
+    if (wm && !wm[2] && m === "DELETE") {
       store.deleteWatch(Number(wm[1]));
       broadcast({ type: "watch_deleted", data: { id: Number(wm[1]) } });
       return json({});

@@ -81,6 +81,9 @@ notifications:
 
 ui:
   inactive_after_minutes: 120
+  # Rows and the header count turn this color once you have seen them (opened the session, or clicked the
+  # check mark). They still need you; they just stop shouting. A new state makes them vivid again.
+  seen_color: "#667085"
   status:
     needs_permission: { label: Needs permission,       color: "#D92D20", attention: true }
     waiting_reply:    { label: Waiting for your reply, color: "#F79009", attention: true }

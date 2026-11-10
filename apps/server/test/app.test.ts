@@ -7,6 +7,10 @@ import { buildArgs, makeStreamHandler } from "../src/launcher";
 import { azureDevOps, pendingApprovalStages } from "../src/providers/azureDevOps";
 import { github } from "../src/providers/github";
 import { nextState, normalizeHook } from "../src/state";
+import { Database } from "bun:sqlite";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { pollOnce } from "../src/watcher";
 
 const cfg = loadConfig(resolve(import.meta.dir, "../../../config.yaml"));
@@ -221,6 +225,66 @@ describe("launcher stream", () => {
     h.handle(line({ type: "result", subtype: "error_during_execution", is_error: true, session_id: "ghost" }));
     expect(store.listSessions().length).toBe(0);
     expect(h.state.started).toBe(false);
+  });
+});
+
+describe("seen", () => {
+  const stateOf = (store: Store) => store.getSession("s1")!;
+  test("seen survives repeat reports of the same state and resets when the state changes", async () => {
+    const store = new Store(":memory:");
+    store.applyHook({ hook_event_name: "Stop", session_id: "s1" });
+    expect(stateOf(store)).toMatchObject({ state: "waiting_reply", seen: 0 });
+    store.markSeen("s1");
+    store.applyHook({ hook_event_name: "Notification", session_id: "s1", notification_type: "idle_prompt" });
+    expect(stateOf(store)).toMatchObject({ state: "waiting_reply", seen: 1 });
+    store.applyHook({ hook_event_name: "UserPromptSubmit", session_id: "s1", prompt: "go" });
+    expect(stateOf(store)).toMatchObject({ state: "working", seen: 0 });
+    store.applyHook({ hook_event_name: "Stop", session_id: "s1" });
+    expect(stateOf(store)).toMatchObject({ state: "waiting_reply", seen: 0 });
+  });
+
+  test("seen does not move the updated time", () => {
+    const store = new Store(":memory:");
+    store.upsertSession("s1", { state: "waiting_reply" }, 1000);
+    store.markSeen("s1");
+    expect(stateOf(store)).toMatchObject({ seen: 1, updated_at: 1000 });
+  });
+
+  test("routes mark sessions and watches seen and broadcast the change", async () => {
+    const store = new Store(":memory:");
+    const sent: any[] = [];
+    const handle = createApp({ cfg, store, providers: [], clientDir: "/nonexistent", broadcast: (m) => sent.push(m) });
+    store.upsertSession("s1", { state: "needs_permission" });
+    const w = store.addWatch("https://x", "azure_devops", "build 1");
+    store.updateWatch(w.id, { state: "approval_pending" });
+    expect(store.listWatches()[0]!.seen).toBe(0);
+
+    const a = await handle(new Request("http://127.0.0.1/api/sessions/s1/seen", { method: "POST" }));
+    expect((await a.json()).seen).toBe(1);
+    const b = await handle(new Request(`http://127.0.0.1/api/watches/${w.id}/seen`, { method: "POST" }));
+    expect((await b.json()).seen).toBe(1);
+    expect(sent.map((m) => [m.type, m.data.seen])).toEqual([["session", 1], ["watch", 1]]);
+    expect((await handle(new Request("http://127.0.0.1/api/sessions/nope/seen", { method: "POST" }))).status).toBe(404);
+    expect((await handle(new Request("http://127.0.0.1/api/watches/999/seen", { method: "POST" }))).status).toBe(404);
+    expect((await handle(new Request("http://127.0.0.1/api/sessions/s1/seen", { method: "POST", headers: { origin: "https://evil.example" } }))).status).toBe(403);
+    // A watch that changes state becomes unseen again.
+    store.updateWatch(w.id, { state: "succeeded" });
+    expect(store.listWatches()[0]!.seen).toBe(0);
+  });
+
+  test("a database from before 'seen' existed is upgraded and keeps its rows", () => {
+    const path = join(mkdtempSync(join(tmpdir(), "cd-")), "old.sqlite");
+    const old = new Database(path);
+    old.exec(`CREATE TABLE sessions (id TEXT PRIMARY KEY, name TEXT, default_name TEXT NOT NULL, cwd TEXT, transcript_path TEXT,
+      state TEXT NOT NULL, last_prompt TEXT, last_message TEXT, source TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+      INSERT INTO sessions VALUES ('old1', NULL, 'old session', NULL, NULL, 'waiting_reply', NULL, NULL, 'hook', 1, 1);
+      CREATE TABLE watches (id INTEGER PRIMARY KEY AUTOINCREMENT, url TEXT NOT NULL, provider TEXT NOT NULL, title TEXT NOT NULL,
+      state TEXT NOT NULL, detail TEXT, active INTEGER NOT NULL DEFAULT 1, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);`);
+    old.close();
+    const store = new Store(path);
+    expect(store.getSession("old1")).toMatchObject({ default_name: "old session", seen: 0 });
+    store.markSeen("old1");
+    expect(new Store(path).getSession("old1")!.seen).toBe(1);
   });
 });
 

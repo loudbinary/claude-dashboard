@@ -110,6 +110,13 @@ Set under `ui.status`. States with `attention: true` sort to the top, tint the r
   already in the dashboard are matched first; any other value is passed to the Claude CLI, which accepts a session id
   or the session's own title. A resumed terminal session becomes answerable from the dashboard. Close it in the
   terminal first so two processes are not writing to the same session.
+- **Seen**: a session or pipeline that needs you is vivid (and pulses) until you have seen it. Opening a session, clicking
+  a pipeline row, the ✓ button, dismissing its popup, or "Mark all seen" marks it seen. A seen item stays at the top
+  of the list in the muted `ui.seen_color` with a ✓ on its chip, the header count turns muted when nothing new is
+  left, and no popup (in the page or a Windows toast) is raised for it again, including after a page refresh or a
+  server restart. A toast already on screen is withdrawn. It becomes vivid again, with a new popup, only when its
+  state changes, for example Claude finishes another turn and is waiting on you again.
+  Popups for pipelines stay until you dismiss them; dismissing one marks the pipeline seen.
 - **Rename**: click the pencil or edit the title in the detail panel. Names are stored in the dashboard database only.
 - **Reply**: sessions started from the dashboard can be answered in the detail panel (resumed by session id).
   Sessions running in a terminal are observed only; reply in the terminal.

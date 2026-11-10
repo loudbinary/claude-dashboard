@@ -1,13 +1,13 @@
 export interface StatusStyle { label: string; color: string; attention: boolean }
 export interface Action { key: string; label: string; kind: "session" | "watch"; accepts?: "pr" | "run" }
-export interface AppConfig { actions: Action[]; status: Record<string, StatusStyle>; inactive_after_minutes: number; providers: string[]; default_cwd: string }
+export interface AppConfig { actions: Action[]; status: Record<string, StatusStyle>; inactive_after_minutes: number; seen_color: string; providers: string[]; default_cwd: string }
 
 export interface Session {
   id: string; name: string | null; default_name: string; cwd: string | null; state: string;
   last_prompt: string | null; last_message: string | null; source: "hook" | "dashboard";
-  created_at: number; updated_at: number;
+  created_at: number; updated_at: number; seen: number;
 }
-export interface Watch { id: number; url: string; provider: string; title: string; state: string; detail: string | null; active: number; updated_at: number }
+export interface Watch { id: number; url: string; provider: string; title: string; state: string; detail: string | null; active: number; updated_at: number; seen: number }
 export interface Note { role: "user" | "assistant"; text: string; ts: string | null }
 export interface EventRow { id: number; type: string; payload: string; ts: number }
 export interface SessionDetail { session: Session; events: EventRow[]; notes: Note[] }
@@ -34,6 +34,8 @@ export const api = {
   reply: (id: string, text: string) => call(`/api/sessions/${encodeURIComponent(id)}/reply`, "POST", { text }),
   runAction: (key: string, url: string) => call(`/api/actions/${key}`, "POST", { url }),
   watches: () => call<Watch[]>("/api/watches"),
+  markSeen: (id: string) => call<Session>(`/api/sessions/${encodeURIComponent(id)}/seen`, "POST"),
+  markWatchSeen: (id: number) => call<Watch>(`/api/watches/${id}/seen`, "POST"),
   removeWatch: (id: number) => call(`/api/watches/${id}`, "DELETE"),
 };
 

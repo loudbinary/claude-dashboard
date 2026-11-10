@@ -1,5 +1,5 @@
 :root {
-  --bg: #0f1218; --panel: #171b24; --line: #262c3a; --text: #e6e9ef; --muted: #8b93a7; --accent: #2e90fa;
+  --seen: #667085; --bg: #0f1218; --panel: #171b24; --line: #262c3a; --text: #e6e9ef; --muted: #8b93a7; --accent: #2e90fa;
   font-family: "Segoe UI", system-ui, -apple-system, sans-serif; font-size: 14px; color: var(--text); background: var(--bg);
 }
 @media (prefers-color-scheme: light) {
@@ -106,3 +106,14 @@ input:focus, textarea:focus, button:focus-visible { outline: 2px solid var(--acc
 .md th { background: var(--bg); }
 .md hr { border: 0; border-top: 1px solid var(--line); margin: 12px 0; }
 .new-session .hint { flex: 1; font-size: 12px; align-self: center; }
+
+/* Seen: still needs you, but no longer shouting */
+.grid tr.attention.seen td { background: color-mix(in srgb, var(--seen) 10%, var(--panel)); border-color: color-mix(in srgb, var(--seen) 30%, var(--line)); }
+.chip.seen { filter: saturate(.55) brightness(.85); }
+.count.calm { background: color-mix(in srgb, var(--seen) 25%, var(--panel)); border-color: color-mix(in srgb, var(--seen) 60%, var(--line)); color: var(--text); }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.top .ghost { font-size: 12px; }
+.toast { display: flex; gap: 10px; align-items: flex-start; }
+.toast > span { flex: 1; }
+.toast .ghost { color: #cbd5e1; padding: 0 4px; line-height: 1.2; }
+.toast .ghost:hover { color: #fff; background: rgba(255, 255, 255, .15); }
