@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { api, type Session, type SessionDetail, type StatusStyle } from "../api";
 import { popOut, selectionIn, type Snippet } from "../popout";
 import Markdown from "./Markdown.vue";
@@ -28,6 +28,8 @@ async function load(jump: boolean) {
   if (panel.value) panel.value.scrollTop = panel.value.scrollHeight;
 }
 watch(() => props.session.id, () => { name.value = props.session.name ?? props.session.default_name; detail.value = null; load(true); }, { immediate: true });
+// Expanding a session (or opening one from a Windows toast) brings its details into view.
+onMounted(() => panel.value?.scrollIntoView({ block: "nearest", behavior: "smooth" }));
 // Refresh notes whenever the session changes (new prompt, stop, notification).
 watch(() => props.session.updated_at, () => load(false));
 
@@ -102,14 +104,14 @@ async function remove() {
 </script>
 
 <template>
-  <aside ref="panel" class="detail" @contextmenu="onContextMenu">
+  <div ref="panel" class="detail" @contextmenu="onContextMenu">
     <div v-if="menu" class="ctx-menu" role="menu" :style="{ left: menu.x + 'px', top: menu.y + 'px' }" @pointerdown.stop>
       <button role="menuitem" @click="popOutSelection">Pop out selection</button>
       <button role="menuitem" @click="copySelection">Copy</button>
     </div>
     <header>
       <input v-model="name" class="rename" aria-label="Session name" @blur="saveName" @keydown.enter="($event.target as HTMLInputElement).blur()" />
-      <button class="ghost" aria-label="Close" @click="emit('close')">✕</button>
+      <button class="ghost" aria-label="Collapse" title="Collapse" @click="emit('close')">▴</button>
     </header>
     <div class="meta">
       <StatusChip :state="session.state" :styles="styles" :seen="!!session.seen" />
@@ -151,5 +153,5 @@ async function remove() {
       <p v-else class="muted">This session runs in a terminal, so reply there. Sessions started from the dashboard can be answered here.</p>
       <button class="ghost danger" @click="remove">Remove from dashboard</button>
     </footer>
-  </aside>
+  </div>
 </template>

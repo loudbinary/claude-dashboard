@@ -98,6 +98,9 @@ async function commitRename(s: Session) {
   try { await api.rename(s.id, draft.value); } catch (err) { toast((err as Error).message, true); }
 }
 
+/** Clicking a session row expands its details underneath; clicking it again collapses them. */
+function toggle(id: string) { selectedId.value = selectedId.value === id ? null : id; }
+
 async function removeWatch(w: Watch) {
   try { await api.removeWatch(w.id); } catch (err) { toast((err as Error).message, true); }
 }
@@ -139,7 +142,7 @@ onUnmounted(() => { clearInterval(clock); window.removeEventListener("hashchange
 </script>
 
 <template>
-  <div class="page" :class="{ split: selected }" :style="{ '--seen': config?.seen_color }">
+  <div class="page" :style="{ '--seen': config?.seen_color }">
     <main>
       <header class="top">
         <h1>Claude Dashboard</h1>
@@ -177,13 +180,15 @@ onUnmounted(() => { clearInterval(clock); window.removeEventListener("hashchange
         <table v-else class="grid">
           <thead><tr><th>Status</th><th>Session</th><th>Last input you sent</th><th>Updated</th><th></th></tr></thead>
           <tbody>
-            <tr v-for="s in sorted" :key="s.id" :style="{ '--row': rowColor(shownState(s), s.seen) }"
-                :class="{ attention: needsYou(shownState(s)), seen: isSeen(shownState(s), s.seen), selected: s.id === selectedId }" @click="selectedId = s.id">
+            <template v-for="s in sorted" :key="s.id">
+            <tr :style="{ '--row': rowColor(shownState(s), s.seen) }" :aria-expanded="s.id === selectedId"
+                :class="{ attention: needsYou(shownState(s)), seen: isSeen(shownState(s), s.seen), selected: s.id === selectedId }" @click="toggle(s.id)">
               <td class="status"><StatusChip :state="shownState(s)" :styles="styles" :seen="!!s.seen" /></td>
               <td>
                 <input v-if="editing === s.id" v-model="draft" class="rename" aria-label="Session name" autofocus @click.stop
                        @blur="commitRename(s)" @keydown.enter="commitRename(s)" @keydown.esc="editing = null" />
                 <template v-else>
+                  <span class="chevron" aria-hidden="true">{{ s.id === selectedId ? "▾" : "▸" }}</span>
                   <span class="name">{{ s.name ?? s.default_name }}</span>
                   <div class="sub mono">{{ s.cwd }}</div>
                 </template>
@@ -195,12 +200,14 @@ onUnmounted(() => { clearInterval(clock); window.removeEventListener("hashchange
                 <button class="ghost" aria-label="Rename session" title="Rename" @click.stop="startRename(s)">✎</button>
               </td>
             </tr>
+            <tr v-if="s.id === selectedId" class="detail-row" :style="{ '--row': rowColor(shownState(s), s.seen) }">
+              <td colspan="5"><SessionDetail :session="s" :styles="styles" @close="selectedId = null" @toast="toast" /></td>
+            </tr>
+            </template>
           </tbody>
         </table>
       </section>
     </main>
-
-    <SessionDetail v-if="selected" :session="selected" :styles="styles" @close="selectedId = null" @toast="toast" />
 
     <div class="toasts" role="status">
       <div v-for="t in toasts" :key="t.id" class="toast" :class="{ error: t.error }">
