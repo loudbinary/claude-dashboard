@@ -144,7 +144,8 @@ async function remove() {
 
     <footer>
       <template v-if="session.source === 'dashboard'">
-        <textarea v-model="reply" rows="3" placeholder="Reply to continue this session" @keydown.ctrl.enter="send" />
+        <textarea v-model="reply" rows="3" placeholder="Reply to continue this session (Shift+Enter to send)"
+          @keydown.shift.enter.prevent="!sending && send()" @keydown.ctrl.enter.prevent="!sending && send()" />
         <button class="action" :disabled="sending || !reply.trim()" @click="send">{{ sending ? "Sending…" : "Send reply" }}</button>
       </template>
       <p v-else class="muted">This session runs in a terminal, so reply there. Sessions started from the dashboard can be answered here.</p>
