@@ -11,8 +11,8 @@ export interface ActionConfig {
   accepts?: "pr" | "run";
   prompt?: string;
   name?: string;
-  permission_mode?: string;
-  allowed_tools?: string[];
+  permission_mode?: string | null;
+  allowed_tools?: string[] | null;
   cwd?: string;
 }
 
@@ -22,7 +22,7 @@ export interface Config {
   server: { host: string; port: number; database_path: string };
   claude: {
     command: string; default_cwd: string; extra_args: string[];
-    new_session?: { permission_mode?: string; allowed_tools?: string[] };
+    new_session?: { permission_mode?: string | null; allowed_tools?: string[] | null } | null;
   };
   providers: { azure_devops: ProviderConfig; github: ProviderConfig };
   watch: { poll_interval_seconds: number };
@@ -53,7 +53,7 @@ export function loadConfig(path = process.env.CLAUDE_DASHBOARD_CONFIG ?? resolve
   const base = dirname(path);
   const abs = (p: string) => (isAbsolute(p) ? p : resolve(base, p));
   cfg.server.database_path = abs(cfg.server.database_path);
-  cfg.claude.default_cwd = abs(cfg.claude.default_cwd);
+  cfg.claude.default_cwd = abs(process.env.CLAUDE_DASHBOARD_CWD || cfg.claude.default_cwd || ".");
   if (process.env.CLAUDE_DASHBOARD_PORT) cfg.server.port = Number(process.env.CLAUDE_DASHBOARD_PORT);
 
   const keys = new Set<string>();

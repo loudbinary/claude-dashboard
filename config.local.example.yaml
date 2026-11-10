@@ -5,7 +5,8 @@ server:
   database_path: C:/Users/you/.claude-dashboard/dashboard.sqlite
 
 claude:
-  default_cwd: C:/src
+  # Sessions start here and pick up this workspace's Claude settings, permissions and tools.
+  default_cwd: C:/path/to/your/workspace
 
 providers:
   github:

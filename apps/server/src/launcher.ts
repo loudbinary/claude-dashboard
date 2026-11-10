@@ -7,8 +7,9 @@ export interface LaunchOptions {
   cwd?: string;
   /** Session id, or a session title the Claude CLI can resolve. */
   resume?: string;
-  permission_mode?: string;
-  allowed_tools?: string[];
+  /** Empty means: do not override; the workspace's Claude settings decide. */
+  permission_mode?: string | null;
+  allowed_tools?: string[] | null;
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

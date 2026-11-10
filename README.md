@@ -25,12 +25,26 @@ bun run start                               # http://127.0.0.1:4000
 
 For development run `bun run server` and `bun run client` in two terminals and open http://localhost:5173.
 
-### 1. Send Claude Code events to the dashboard
+### 1. Point it at your workspace
+
+Sessions started from the dashboard run in `claude.default_cwd`. Set it to your workspace folder in `config.local.yaml`
+(or set the `CLAUDE_DASHBOARD_CWD` environment variable) so they load that workspace's `CLAUDE.md`, `.claude` settings,
+already-granted permissions, MCP servers and plugins, the same as a terminal session started there. The default (`.`)
+is the dashboard's own folder, which has none of that; the server prints the folder it will use at startup.
+
+```yaml
+claude:
+  default_cwd: C:/path/to/your/workspace
+```
+
+The dashboard does not override permissions unless you set `permission_mode` or `allowed_tools` in the config.
+
+### 2. Send Claude Code events to the dashboard
 
 Merge `hooks/settings.example.json` into `~/.claude/settings.json` (all projects) or a project's
 `.claude/settings.json`. If you change `server.port`, change the URLs to match.
 
-### 2. Set tokens
+### 3. Set tokens
 
 Tokens are read from environment variables named in `config.yaml`; they are never written to a file.
 
@@ -57,7 +71,7 @@ actions:
     accepts: pr             # pr | run: the kind of URL expected
     name: "PR review: {title}"
     prompt: "Review the pull request at {url}. ..."
-    permission_mode: default
+    permission_mode:        # empty = use the workspace's Claude settings
     allowed_tools: []       # e.g. ["Read", "Bash(gh pr:*)", "Bash(az repos:*)"]
 ```
 
@@ -90,7 +104,8 @@ Set under `ui.status`. States with `attention: true` sort to the top, tint the r
 
 - **New session**: starts a Claude CLI session (`claude -p`) in the folder you choose. Start sessions here rather than
   in a terminal and every one of them can be followed and answered from the dashboard. They run headless, so they
-  cannot stop to ask for permission; set `claude.new_session.permission_mode` and `allowed_tools` in the config.
+  cannot stop to ask for permission: what the workspace's Claude settings already allow works, anything else is
+  denied. `claude.new_session` in the config can widen that.
 - **Resume session**: asks for a session name or id and continues it with `claude -p --resume`. Names of sessions
   already in the dashboard are matched first; any other value is passed to the Claude CLI, which accepts a session id
   or the session's own title. A resumed terminal session becomes answerable from the dashboard. Close it in the

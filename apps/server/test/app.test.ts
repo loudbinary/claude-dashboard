@@ -163,7 +163,10 @@ describe("app", () => {
     const res = await handle(post("/api/sessions", { prompt: "Summarize this repo", cwd: import.meta.dir, name: "Repo summary" }));
     expect(res.status).toBe(201);
     expect(await res.json()).toEqual({ session_id: "new-session" });
-    expect(launched[0]).toMatchObject({ prompt: "Summarize this repo", cwd: import.meta.dir, name: "Repo summary", permission_mode: "default" });
+    expect(launched[0]).toMatchObject({ prompt: "Summarize this repo", cwd: import.meta.dir, name: "Repo summary" });
+    // No permission override by default: the workspace's own Claude settings decide.
+    expect(launched[0].permission_mode ?? null).toBeNull();
+    expect(buildArgs(cfg, launched[0])).not.toContain("--permission-mode");
     expect((await handle(post("/api/sessions", { prompt: "x", cwd: "/no/such/folder" }))).status).toBe(400);
     expect((await handle(post("/api/sessions", { prompt: "  " }))).status).toBe(400);
   });

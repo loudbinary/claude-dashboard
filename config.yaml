@@ -9,13 +9,18 @@ server:
 
 claude:
   command: claude            # CLI used to launch and resume sessions from the dashboard
-  default_cwd: .             # working folder for launched sessions
+  # Folder that sessions start in. Set this (in config.local.yaml, or with the CLAUDE_DASHBOARD_CWD
+  # environment variable) to your workspace so sessions load its CLAUDE.md, .claude settings,
+  # granted permissions, MCP servers and plugins, exactly as a terminal session started there would.
+  # "." means the dashboard's own folder, which has none of that.
+  default_cwd: .
   extra_args: []             # appended to every launch, e.g. ["--model", "sonnet"]
   # Sessions started with the "New session" button. They run headless, so they cannot stop to
   # ask for permission: anything not allowed here is denied rather than prompted.
   new_session:
-    permission_mode: default   # default | acceptEdits | plan | bypassPermissions
-    allowed_tools: []          # e.g. ["Read", "Edit", "Bash(git:*)"]
+    # Leave both empty to use the workspace's own Claude settings (recommended).
+    permission_mode:           # override: default | acceptEdits | plan | bypassPermissions
+    allowed_tools: []          # extra tools to allow, e.g. ["Read", "Edit", "Bash(git:*)"]
 
 providers:
   azure_devops:
@@ -43,7 +48,7 @@ actions:
       Review the pull request at {url}.
       Read the description and the full diff, then report: a short summary, correctness
       problems, security concerns, and suggested changes. Do not push or post comments.
-    permission_mode: default
+    permission_mode:           # empty = use the workspace's Claude settings
     allowed_tools: []
   - key: watch_pipeline
     label: Watch pipeline
