@@ -70,6 +70,9 @@ input:focus, textarea:focus, button:focus-visible { outline: 2px solid var(--acc
 .detail footer { margin-top: auto; display: grid; gap: 8px; border-top: 1px solid var(--line); padding-top: 12px; }
 .detail footer .ghost { justify-self: start; }
 
+.ctx-menu { position: fixed; z-index: 20; min-width: 180px; display: grid; padding: 4px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 6px 18px rgba(0, 0, 0, .35); }
+.ctx-menu button { background: none; border: 0; color: var(--text); text-align: left; padding: 7px 10px; border-radius: 4px; font: inherit; cursor: pointer; }
+.ctx-menu button:hover, .ctx-menu button:focus-visible { background: var(--line); outline: none; }
 .toasts { position: fixed; right: 16px; bottom: 16px; display: grid; gap: 8px; max-width: 420px; z-index: 10; }
 .toast { background: #1d2939; color: #fff; padding: 10px 14px; border-radius: 6px; border-left: 4px solid #12b76a; box-shadow: 0 4px 14px rgba(0, 0, 0, .3); overflow-wrap: anywhere; }
 .toast.error { border-left-color: #d92d20; }

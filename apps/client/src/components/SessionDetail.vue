@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
 import { api, type Session, type SessionDetail, type StatusStyle } from "../api";
+import { popOut, selectionIn, type Snippet } from "../popout";
 import Markdown from "./Markdown.vue";
 import StatusChip from "./StatusChip.vue";
 
@@ -58,13 +59,54 @@ async function send() {
   finally { sending.value = false; }
 }
 
+/**
+ * Right-clicking selected text in the panel offers to pop it out into its own window.
+ * With nothing selected (or inside the reply box) the browser's normal menu appears instead.
+ */
+const menu = ref<{ x: number; y: number; snippet: Snippet } | null>(null);
+
+function onContextMenu(ev: MouseEvent) {
+  if ((ev.target as HTMLElement).closest("input, textarea") || !panel.value) return;
+  const snippet = selectionIn(panel.value);
+  if (!snippet) return;
+  ev.preventDefault();
+  // Keep the menu inside the window.
+  menu.value = { x: Math.min(ev.clientX, window.innerWidth - 200), y: Math.min(ev.clientY, window.innerHeight - 90), snippet };
+}
+const closeMenu = () => { menu.value = null; };
+const onKey = (ev: KeyboardEvent) => { if (ev.key === "Escape") closeMenu(); };
+watch(menu, (open, was) => {
+  if (open && !was) {
+    window.addEventListener("pointerdown", closeMenu); window.addEventListener("blur", closeMenu); window.addEventListener("keydown", onKey);
+    panel.value?.addEventListener("scroll", closeMenu);
+  } else if (!open) {
+    window.removeEventListener("pointerdown", closeMenu); window.removeEventListener("blur", closeMenu); window.removeEventListener("keydown", onKey);
+    panel.value?.removeEventListener("scroll", closeMenu);
+  }
+});
+onBeforeUnmount(closeMenu);
+
+function popOutSelection() {
+  const m = menu.value; closeMenu();
+  if (m && !popOut(m.snippet, name.value || props.session.default_name)) emit("toast", "The browser blocked the popup window. Allow popups for the dashboard and try again.", true);
+}
+async function copySelection() {
+  const m = menu.value; closeMenu();
+  if (!m) return;
+  try { await navigator.clipboard.writeText(m.snippet.text); emit("toast", "Copied"); } catch (err) { emit("toast", (err as Error).message, true); }
+}
+
 async function remove() {
   try { await api.removeSession(props.session.id); emit("close"); } catch (err) { emit("toast", (err as Error).message, true); }
 }
 </script>
 
 <template>
-  <aside ref="panel" class="detail">
+  <aside ref="panel" class="detail" @contextmenu="onContextMenu">
+    <div v-if="menu" class="ctx-menu" role="menu" :style="{ left: menu.x + 'px', top: menu.y + 'px' }" @pointerdown.stop>
+      <button role="menuitem" @click="popOutSelection">Pop out selection</button>
+      <button role="menuitem" @click="copySelection">Copy</button>
+    </div>
     <header>
       <input v-model="name" class="rename" aria-label="Session name" @blur="saveName" @keydown.enter="($event.target as HTMLInputElement).blur()" />
       <button class="ghost" aria-label="Close" @click="emit('close')">✕</button>
