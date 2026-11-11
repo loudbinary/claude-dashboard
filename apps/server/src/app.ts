@@ -3,7 +3,7 @@ import { join, normalize, resolve } from "node:path";
 import type { ActionConfig, Config } from "./config";
 import { repoRoot } from "./config";
 import type { Session, Store, Watch } from "./db";
-import { launch as realLaunch, type LaunchOptions } from "./launcher";
+import { launch as realLaunch, stopSession as realStop, type LaunchOptions } from "./launcher";
 import { resolveUrl } from "./providers";
 import type { Provider } from "./providers/types";
 import { normalizeHook } from "./state";
@@ -19,6 +19,8 @@ export interface AppDeps {
   /** Runs one poll right away (used after adding a watch). */
   pollNow?: () => void;
   launch?: (o: LaunchOptions, onChange: (s: Session) => void) => Promise<string>;
+  /** Kills the Claude process the dashboard runs for a session; false when there is none. */
+  stop?: (id: string) => Promise<boolean>;
   clientDir?: string;
 }
 
@@ -42,6 +44,7 @@ async function body(req: Request): Promise<any | null> {
 export function createApp(deps: AppDeps) {
   const { cfg, store, providers, broadcast } = deps;
   const launch = deps.launch ?? ((o, cb) => realLaunch(cfg, store, o, cb));
+  const stop = deps.stop ?? realStop;
   const clientDir = deps.clientDir ?? resolve(repoRoot, "apps/client/dist");
   const onSession = (s: Session) => broadcast({ type: "session", data: s });
 
@@ -86,6 +89,8 @@ export function createApp(deps: AppDeps) {
     if ((path === "/hooks" || path === "/events") && m === "POST") {
       const e = normalizeHook(await body(req));
       if (!e) return fail(400, "Expected hook JSON with hook_event_name and session_id");
+      // Removed from the dashboard: stays removed, whatever the session does next.
+      if (store.isRemoved(e.session_id)) return json({ ignored: true });
       onSession(store.applyHook(e));
       return json({});
     }
@@ -147,11 +152,15 @@ export function createApp(deps: AppDeps) {
       }
     }
 
-    const sm = path.match(/^\/api\/sessions\/([^/]+)(\/reply|\/seen)?$/);
+    const sm = path.match(/^\/api\/sessions\/([^/]+)(\/reply|\/seen|\/stop)?$/);
     if (sm) {
       const id = decodeURIComponent(sm[1]!);
       const s = store.getSession(id);
       if (!s) return fail(404, "Session not found");
+      if (sm[2] === "/stop" && m === "POST") {
+        if (!(await stop(id))) return fail(409, "No running process for this session. Only sessions started from the dashboard can be stopped here.");
+        return json({ stopped: true });
+      }
       if (sm[2] === "/seen" && m === "POST") {
         const next = store.markSeen(id)!;
         onSession(next);
@@ -180,9 +189,12 @@ export function createApp(deps: AppDeps) {
         return json(next);
       }
       if (!sm[2] && m === "DELETE") {
+        // Remove (and remember the removal) first, so nothing the process does while it shuts down can
+        // write the session back; then stop the process if the dashboard is running one.
         store.deleteSession(id);
+        const stopped = await stop(id);
         broadcast({ type: "session_deleted", data: { id } });
-        return json({});
+        return json({ stopped });
       }
       if (sm[2] === "/reply" && m === "POST") {
         const b = await body(req);

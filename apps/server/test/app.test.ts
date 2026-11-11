@@ -107,6 +107,7 @@ describe("app", () => {
     const store = new Store(":memory:");
     const sent: any[] = [];
     const launched: any[] = [];
+    const stopped: string[] = [];
     const providers = [azureDevOps("t", "7.1", fakeFetch({ "/timeline": { records: [] }, "/builds/": { status: "completed", result: "succeeded", buildNumber: "9" } })), github("t"),
       pagerduty("t", fakeFetch({
         "/alerts": { alerts: [{ summary: "CPU > 90%", status: "triggered", body: { details: { pod: "api-1" } } }] },
@@ -117,8 +118,9 @@ describe("app", () => {
       cfg, store, providers, clientDir: "/nonexistent",
       broadcast: (m) => sent.push(m),
       launch: async (o) => { launched.push(o); return launchId; },
+      stop: async (id) => { if (id !== "dash") return false; stopped.push(id); return true; },
     });
-    return { store, sent, launched, handle, providers };
+    return { store, sent, launched, handle, providers, stopped };
   }
 
   test("hooks drive status, name and rename", async () => {
@@ -174,6 +176,42 @@ describe("app", () => {
     const changed = await pollOnce(store, providers);
     expect(changed[0]).toMatchObject({ state: "succeeded", active: 0, title: "proj build 42 #9" });
     expect(store.listWatches(true).length).toBe(0);
+  });
+
+  test("removing a session stops its process and keeps it removed", async () => {
+    const { handle, store, stopped } = setup();
+    store.upsertSession("dash", { source: "dashboard", cwd: "/w" });
+    const res = await handle(new Request("http://127.0.0.1/api/sessions/dash", { method: "DELETE" }));
+    expect(await res.json()).toEqual({ stopped: true });
+    expect(stopped).toEqual(["dash"]);
+    // A later hook (a cross-session message, a tool call) must not bring it back.
+    expect(await (await handle(post("/hooks", { hook_event_name: "UserPromptSubmit", session_id: "dash", prompt: "peer says hi" }))).json()).toEqual({ ignored: true });
+    expect(store.getSession("dash")).toBeNull();
+    expect(store.sessionEvents("dash").length).toBe(0);
+    // An explicit resume brings it back.
+    store.unremove("dash");
+    await handle(post("/hooks", { hook_event_name: "UserPromptSubmit", session_id: "dash", prompt: "back" }));
+    expect(store.getSession("dash")).not.toBeNull();
+  });
+
+  test("stop only works for a process the dashboard runs", async () => {
+    const { handle, store } = setup();
+    store.upsertSession("term", { source: "hook" });
+    store.upsertSession("dash", { source: "dashboard" });
+    expect((await handle(post("/api/sessions/term/stop", {}))).status).toBe(409);
+    expect((await handle(post("/api/sessions/dash/stop", {}))).status).toBe(200);
+  });
+
+  test("stream output for a removed session is dropped", () => {
+    const store = new Store(":memory:");
+    const changes: any[] = [];
+    const h = makeStreamHandler(store, { prompt: "go" }, "/w", (s) => changes.push(s), () => {});
+    h.handle(JSON.stringify({ type: "system", subtype: "init", session_id: "gone" }));
+    store.deleteSession("gone");
+    h.handle(JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text: "still talking" }] } }));
+    h.handle(JSON.stringify({ type: "result", result: "done" }));
+    expect(store.getSession("gone")).toBeNull();
+    expect(changes.length).toBe(1);
   });
 
   test("reply is limited to dashboard-launched sessions", async () => {

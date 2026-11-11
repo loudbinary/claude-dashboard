@@ -54,6 +54,7 @@ export class Store {
         id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL, type TEXT NOT NULL,
         payload TEXT NOT NULL, ts INTEGER NOT NULL);
       CREATE INDEX IF NOT EXISTS events_session ON events(session_id, id);
+      CREATE TABLE IF NOT EXISTS removed_sessions (id TEXT PRIMARY KEY, ts INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS watches (
         id INTEGER PRIMARY KEY AUTOINCREMENT, url TEXT NOT NULL, provider TEXT NOT NULL, title TEXT NOT NULL,
         state TEXT NOT NULL, detail TEXT, active INTEGER NOT NULL DEFAULT 1,
@@ -135,9 +136,23 @@ export class Store {
     return { ...cur, name: clean };
   }
 
-  deleteSession(id: string) {
+  /**
+   * Removes a session and remembers that it was removed, so later hook events, streamed output or
+   * cross-session messages for the same id are ignored instead of bringing it back.
+   */
+  deleteSession(id: string, now = Date.now()) {
     this.db.query("DELETE FROM events WHERE session_id = ?").run(id);
     this.db.query("DELETE FROM sessions WHERE id = ?").run(id);
+    this.db.query("INSERT OR REPLACE INTO removed_sessions (id, ts) VALUES (?, ?)").run(id, now);
+  }
+
+  isRemoved(id: string): boolean {
+    return !!this.db.query("SELECT 1 FROM removed_sessions WHERE id = ?").get(id);
+  }
+
+  /** An explicit resume from the dashboard brings a removed session back. */
+  unremove(id: string) {
+    this.db.query("DELETE FROM removed_sessions WHERE id = ?").run(id);
   }
 
   /** Prompts and notifications for the drill-in view; tool events are left out to keep it readable. */

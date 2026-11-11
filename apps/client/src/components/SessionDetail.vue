@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
-import { api, type Session, type SessionDetail, type StatusStyle } from "../api";
+import { api, confirmRemove, type Session, type SessionDetail, type StatusStyle } from "../api";
 import { popOut, selectionIn, type Snippet } from "../popout";
 import Markdown from "./Markdown.vue";
 import StatusChip from "./StatusChip.vue";
@@ -99,6 +99,7 @@ async function copySelection() {
 }
 
 async function remove() {
+  if (!confirmRemove(props.session)) return;
   try { await api.removeSession(props.session.id); emit("close"); } catch (err) { emit("toast", (err as Error).message, true); }
 }
 </script>

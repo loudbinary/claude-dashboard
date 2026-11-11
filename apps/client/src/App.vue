@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
-import { ago, api, stream, type AppConfig, type Session, type Watch } from "./api";
+import { ago, api, confirmRemove, stream, type AppConfig, type Session, type Watch } from "./api";
 import ActionBar from "./components/ActionBar.vue";
 import SessionDetail from "./components/SessionDetail.vue";
 import StatusChip from "./components/StatusChip.vue";
@@ -118,11 +118,16 @@ watch(rowMenu, (open, was) => {
 });
 function menuRename() { const s = rowMenu.value?.session; closeRowMenu(); if (s) startRename(s); }
 function menuSeen() { const s = rowMenu.value?.session; closeRowMenu(); if (s) markSeen("s", s.id); }
+/** A dashboard-started session that is still doing something can be stopped without removing it. */
+const canStop = (s: Session) => s.source === "dashboard" && ["working", "needs_permission"].includes(s.state);
+async function menuStop() {
+  const s = rowMenu.value?.session; closeRowMenu();
+  if (!s) return;
+  try { await api.stopSession(s.id); toast(`Stopped "${s.name ?? s.default_name}"`); } catch (err) { toast((err as Error).message, true); }
+}
 async function menuRemove() {
   const s = rowMenu.value?.session; closeRowMenu();
-  if (!s || !confirm(`Remove "${s.name ?? s.default_name}" from the dashboard?
-
-This only removes the dashboard record; the Claude session and its transcript are untouched. A terminal session that is still running will reappear on its next hook event.`)) return;
+  if (!s || !confirmRemove(s)) return;
   try { await api.removeSession(s.id); if (selectedId.value === s.id) selectedId.value = null; }
   catch (err) { toast((err as Error).message, true); }
 }
@@ -238,6 +243,7 @@ onUnmounted(() => { closeRowMenu(); clearInterval(clock); window.removeEventList
     <div v-if="rowMenu" class="ctx-menu" role="menu" :style="{ left: rowMenu.x + 'px', top: rowMenu.y + 'px' }" @pointerdown.stop>
       <button role="menuitem" @click="menuRename">Rename</button>
       <button v-if="needsYou(shownState(rowMenu.session)) && !rowMenu.session.seen" role="menuitem" @click="menuSeen">Mark seen</button>
+      <button v-if="canStop(rowMenu.session)" role="menuitem" @click="menuStop">Stop session</button>
       <button role="menuitem" class="danger" @click="menuRemove">Remove from dashboard</button>
     </div>
 

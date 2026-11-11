@@ -12,6 +12,16 @@ export interface Note { role: "user" | "assistant"; text: string; ts: string | n
 export interface EventRow { id: number; type: string; payload: string; ts: number }
 export interface SessionDetail { session: Session; events: EventRow[]; notes: Note[] }
 
+/** Confirmation shared by every Remove button. */
+export function confirmRemove(s: Session): boolean {
+  const running = s.source === "dashboard"
+    ? "Its Claude process is stopped if it is still running."
+    : "It is a terminal session: it keeps running in its terminal, but will not show up here again.";
+  return confirm(`Remove "${s.name ?? s.default_name}" from the dashboard?
+
+${running} Later activity for it (hooks, cross-session messages) is ignored. The transcript on disk is untouched; Resume brings it back.`);
+}
+
 async function call<T>(path: string, method = "GET", data?: unknown): Promise<T> {
   const res = await fetch(path, {
     method,
@@ -30,7 +40,8 @@ export const api = {
   resumeSession: (session: string, prompt: string, cwd: string) => call<{ session_id: string }>("/api/sessions/resume", "POST", { session, prompt, cwd }),
   session: (id: string) => call<SessionDetail>(`/api/sessions/${encodeURIComponent(id)}`),
   rename: (id: string, name: string) => call<Session>(`/api/sessions/${encodeURIComponent(id)}`, "PATCH", { name }),
-  removeSession: (id: string) => call(`/api/sessions/${encodeURIComponent(id)}`, "DELETE"),
+  removeSession: (id: string) => call<{ stopped: boolean }>(`/api/sessions/${encodeURIComponent(id)}`, "DELETE"),
+  stopSession: (id: string) => call<{ stopped: boolean }>(`/api/sessions/${encodeURIComponent(id)}/stop`, "POST"),
   reply: (id: string, text: string) => call(`/api/sessions/${encodeURIComponent(id)}/reply`, "POST", { text }),
   runAction: (key: string, url: string) => call(`/api/actions/${key}`, "POST", { url }),
   watches: () => call<Watch[]>("/api/watches"),

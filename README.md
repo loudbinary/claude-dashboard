@@ -124,9 +124,12 @@ Set under `ui.status`. States with `attention: true` sort to the top, tint the r
   state changes, for example Claude finishes another turn and is waiting on you again.
   Popups for pipelines stay until you dismiss them; dismissing one marks the pipeline seen.
 - **Rename**: click the pencil or edit the title in the detail panel. Names are stored in the dashboard database only.
-- **Right-click a session row**: Rename, Mark seen, or Remove from dashboard. Remove deletes only the dashboard's
-  record; the Claude session and transcript are untouched, and a terminal session still running reappears on its
-  next hook event.
+- **Right-click a session row**: Rename, Mark seen, Stop session (a dashboard-started session that is still
+  working), or Remove from dashboard.
+- **Remove**: stops the Claude process (and its child processes) if the dashboard started it and it is still running,
+  deletes the dashboard record, and remembers the removal: later hook events, streamed output and cross-session
+  messages for that session are ignored, so it does not come back. A terminal session keeps running in its terminal.
+  The transcript on disk is untouched, and Resume brings a removed session back.
 - **Reply**: sessions started from the dashboard can be answered in the detail panel (resumed by session id).
   Sessions running in a terminal are observed only; reply in the terminal.
 - **Session notes**: read from the transcript file Claude Code reports, so they appear only on the machine that ran the session.
