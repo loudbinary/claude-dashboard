@@ -3,6 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue"
 import { api, confirmRemove, type Session, type SessionDetail, type StatusStyle } from "../api";
 import { popOut, selectionIn, type Snippet } from "../popout";
 import DraftsPanel from "./DraftsPanel.vue";
+import { stripPrComments } from "../prComments";
 import Markdown from "./Markdown.vue";
 import StatusChip from "./StatusChip.vue";
 
@@ -122,12 +123,12 @@ async function remove() {
       <span class="mono">{{ session.id }}</span>
     </div>
 
+    <DraftsPanel v-if="session.source === 'dashboard'" :session="session" @toast="(t, e) => emit('toast', t, e)" />
+
     <section v-if="session.last_message">
       <h3>Latest from Claude</h3>
-      <Markdown :text="session.last_message" />
+      <Markdown :text="stripPrComments(session.last_message)" />
     </section>
-
-    <DraftsPanel v-if="session.source === 'dashboard'" :session="session" @toast="(t, e) => emit('toast', t, e)" />
 
     <section>
       <h3>What you sent</h3>
@@ -143,7 +144,7 @@ async function remove() {
       <p v-else-if="!detail.notes.length" class="muted">No transcript available for this session on this machine.</p>
       <div v-for="(n, i) in detail?.notes ?? []" :key="i" class="note" :class="n.role">
         <strong>{{ n.role === "user" ? "You" : "Claude" }}</strong>
-        <Markdown v-if="n.role === 'assistant'" :text="n.text" />
+        <Markdown v-if="n.role === 'assistant'" :text="stripPrComments(n.text)" />
         <p v-else class="pre">{{ n.text }}</p>
       </div>
     </section>

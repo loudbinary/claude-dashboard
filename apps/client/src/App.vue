@@ -156,13 +156,29 @@ function openFromHash() {
   history.replaceState(null, "", location.pathname + location.search);
 }
 
+// A tab left open across a client rebuild keeps running the old code: compare the build id it loaded with.
+const loadedBuild = ref<string | null>(null);
+const stale = ref(false);
+const reload = () => location.reload();
+async function checkBuild() {
+  try {
+    const id = (await api.config()).client_build;
+    if (!id) return;
+    if (loadedBuild.value === null) loadedBuild.value = id;
+    else if (id !== loadedBuild.value) stale.value = true;
+  } catch { /* offline or restarting: try again later */ }
+}
+
 let clock: ReturnType<typeof setInterval>;
+let buildTimer: ReturnType<typeof setInterval>;
 let sweepTimer: ReturnType<typeof setInterval>;
 onMounted(async () => {
   openFromHash();
   window.addEventListener("hashchange", openFromHash);
   document.addEventListener("visibilitychange", autoSeen);
-  try { config.value = await api.config(); } catch (err) { toast((err as Error).message, true); }
+  try { config.value = await api.config(); loadedBuild.value = config.value.client_build; } catch (err) { toast((err as Error).message, true); }
+  window.addEventListener("focus", checkBuild);
+  buildTimer = setInterval(checkBuild, 60_000);
   stream(
     (m) => {
       if (m.type === "session") {
@@ -183,7 +199,7 @@ onMounted(async () => {
   clock = setInterval(() => { now.value = Date.now(); }, 15_000);
   sweepTimer = setInterval(loadSweep, 60_000);
 });
-onUnmounted(() => { closeRowMenu(); clearInterval(clock); clearInterval(sweepTimer); window.removeEventListener("hashchange", openFromHash); document.removeEventListener("visibilitychange", autoSeen); });
+onUnmounted(() => { closeRowMenu(); clearInterval(clock); clearInterval(buildTimer); window.removeEventListener("focus", checkBuild); clearInterval(sweepTimer); window.removeEventListener("hashchange", openFromHash); document.removeEventListener("visibilitychange", autoSeen); });
 </script>
 
 <template>
@@ -260,6 +276,11 @@ onUnmounted(() => { closeRowMenu(); clearInterval(clock); clearInterval(sweepTim
       <button v-if="needsYou(shownState(rowMenu.session)) && !rowMenu.session.seen" role="menuitem" @click="menuSeen">Mark seen</button>
       <button v-if="canStop(rowMenu.session)" role="menuitem" @click="menuStop">Stop session</button>
       <button role="menuitem" class="danger" @click="menuRemove">Remove from dashboard</button>
+    </div>
+
+    <div v-if="stale" class="update-banner" role="alert">
+      <span>A new dashboard version is available.</span>
+      <button class="action" @click="reload">Reload</button>
     </div>
 
     <div class="toasts" role="status">

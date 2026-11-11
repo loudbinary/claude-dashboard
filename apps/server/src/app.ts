@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join, normalize, resolve } from "node:path";
 import type { ActionConfig, Config } from "./config";
 import { repoRoot } from "./config";
@@ -99,6 +99,10 @@ export function createApp(deps: AppDeps) {
   const launch = deps.launch ?? ((o, cb) => realLaunch(cfg, store, o, cb));
   const stop = deps.stop ?? realStop;
   const clientDir = deps.clientDir ?? resolve(repoRoot, "apps/client/dist");
+  // Identifies the built client (hash of dist/index.html, which names the hashed assets), so open tabs can tell they are stale.
+  const clientBuild = (): string | null => {
+    try { return new Bun.CryptoHasher("sha1").update(readFileSync(join(clientDir, "index.html"))).digest("hex").slice(0, 12); } catch { return null; }
+  };
   const onSession = (s: Session) => broadcast({ type: "session", data: s });
 
   const actionDeps: ActionDeps = { providers, store, broadcast, launch, pollNow: deps.pollNow };
@@ -200,12 +204,13 @@ export function createApp(deps: AppDeps) {
 
     if (path === "/api/config" && m === "GET") {
       return json({
-        actions: cfg.actions.map(({ key, label, kind, accepts }) => ({ key, label, kind, accepts })),
+        actions: cfg.actions.filter((a) => !a.hidden).map(({ key, label, kind, accepts }) => ({ key, label, kind, accepts })),
         status: cfg.ui.status,
         inactive_after_minutes: cfg.ui.inactive_after_minutes,
         seen_color: cfg.ui.seen_color ?? "#667085",
         providers: providers.map((p) => p.key),
         default_cwd: cfg.claude.default_cwd,
+        client_build: clientBuild(),
       });
     }
 

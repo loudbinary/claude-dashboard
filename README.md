@@ -75,6 +75,7 @@ actions:
     model:                  # empty = the CLI default; sonnet | opus | haiku | a model id
     permission_mode:        # empty = use the workspace's Claude settings
     allowed_tools: []       # e.g. ["Read", "Bash(gh pr:*)", "Bash(az repos:*)"]
+    hidden: false           # true = no button, but still usable by key (the Teams sweep uses review_pr_teams this way)
 ```
 
 A click reads the clipboard (the browser asks for permission once) or the URL box if you typed one. `{url}`, `{title}`
@@ -170,6 +171,19 @@ Rules worth knowing:
 
 Dry run: `bun run sweep:dry` (optionally `-- --hours 48`) runs one real scan over the last 24 hours and prints the PRs
 it found with the review decision for each. It launches nothing and writes no state. It does cost one scan.
+
+### Windows toasts
+
+`notifications.scenario` controls how long a toast stays up: `reminder` (default) keeps it on screen until you click
+it, `urgent` does the same and also breaks through Do Not Disturb, `default` lets it slide into the notification
+centre. Reminder and urgent toasts carry an "Acknowledge" button because Windows quietly turns a reminder into a
+normal toast unless it has a button with a background activation.
+
+### Stale browser tabs
+
+`GET /api/config` returns `client_build`, a hash of the built `apps/client/dist/index.html`. The page checks it every
+minute and when the window gains focus, and shows a "new dashboard version is available" banner with a Reload button
+after you rebuild the client.
 
 ### Status colors
 

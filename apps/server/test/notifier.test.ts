@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { resolve } from "node:path";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { loadConfig } from "../src/config";
 import type { Session } from "../src/db";
 import { createNotifier, type Toast } from "../src/notifier";
@@ -21,6 +23,14 @@ const session = (state: string, extra: Partial<Session> = {}): Session => ({
 describe("notifier", () => {
   test("config defaults are filled in", () => {
     expect(base.notifications).toMatchObject({ enabled: true, scenario: "reminder", delay_seconds: 15 });
+  });
+
+  test("scenario accepts urgent and rejects unknown values", () => {
+    const dir = mkdtempSync(join(tmpdir(), "cd-"));
+    const yaml = readFileSync(resolve(import.meta.dir, "../../../config.yaml"), "utf8");
+    const write = (v: string) => { const f = join(dir, "c.yaml"); writeFileSync(f, yaml.replace("scenario: reminder", `scenario: ${v}`)); return f; };
+    expect(loadConfig(write("urgent")).notifications.scenario).toBe("urgent");
+    expect(() => loadConfig(write("loud"))).toThrow(/scenario/);
   });
 
   test("toasts once when a session starts needing you, with a link to it", async () => {

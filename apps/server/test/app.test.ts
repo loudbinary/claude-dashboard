@@ -9,7 +9,7 @@ import { github } from "../src/providers/github";
 import { pagerduty } from "../src/providers/pagerduty";
 import { nextState, normalizeHook } from "../src/state";
 import { Database } from "bun:sqlite";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pollOnce } from "../src/watcher";
@@ -31,6 +31,23 @@ describe("config", () => {
   test("shipped config loads with its buttons", () => {
     expect(cfg.actions.map((a) => a.key)).toEqual(["review_pr", "review_pr_teams", "investigate_pipeline", "analyze_pagerduty", "watch_pipeline"]);
     expect(cfg.ui.status.needs_permission!.attention).toBe(true);
+  });
+  test("hidden actions stay in config but are not listed for the UI", async () => {
+    expect(cfg.actions.find((a) => a.key === "review_pr_teams")!.hidden).toBe(true);
+    const handle = createApp({ cfg, store: new Store(":memory:"), providers: [], clientDir: "/nonexistent", broadcast: () => {} });
+    const body = await (await handle(new Request("http://127.0.0.1/api/config"))).json() as { actions: { key: string }[]; client_build: string | null };
+    expect(body.actions.map((a) => a.key)).toEqual(["review_pr", "investigate_pipeline", "analyze_pagerduty", "watch_pipeline"]);
+    expect(body.client_build).toBeNull();
+  });
+  test("client_build is a stable id of dist/index.html and changes with it", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "cd-"));
+    const handle = createApp({ cfg, store: new Store(":memory:"), providers: [], clientDir: dir, broadcast: () => {} });
+    const build = async () => (await (await handle(new Request("http://127.0.0.1/api/config"))).json() as { client_build: string }).client_build;
+    writeFileSync(join(dir, "index.html"), "<script src=a.js>");
+    const a = await build();
+    expect(await build()).toBe(a);
+    writeFileSync(join(dir, "index.html"), "<script src=b.js>");
+    expect(await build()).not.toBe(a);
   });
 });
 

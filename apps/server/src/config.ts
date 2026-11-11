@@ -18,6 +18,8 @@ export interface ActionConfig {
   cwd?: string;
   /** Model for sessions this action starts (`--model`). Empty = the CLI default. */
   model?: string | null;
+  /** Left out of the button list (GET /api/config); still usable by key, e.g. by the Teams sweep. */
+  hidden?: boolean;
 }
 
 export interface TeamsSweepConfig {
@@ -83,7 +85,7 @@ export function loadConfig(path = process.env.CLAUDE_DASHBOARD_CONFIG ?? resolve
   const local = path.replace(/\.ya?ml$/, ".local.yaml");
   if (existsSync(local)) cfg = deepMerge(cfg, parse(readFileSync(local, "utf8")));
   cfg.notifications = deepMerge(notificationDefaults, cfg.notifications ?? {});
-  if (!["reminder", "default"].includes(cfg.notifications.scenario)) throw new Error(`notifications.scenario must be "reminder" or "default"`);
+  if (!["reminder", "urgent", "default"].includes(cfg.notifications.scenario)) throw new Error(`notifications.scenario must be "reminder", "urgent" or "default"`);
 
   cfg.pr_comments = { footer: typeof cfg.pr_comments?.footer === "string" ? cfg.pr_comments.footer : "" };
 
@@ -98,6 +100,7 @@ export function loadConfig(path = process.env.CLAUDE_DASHBOARD_CONFIG ?? resolve
   const keys = new Set<string>();
   for (const a of cfg.actions ?? []) {
     if (!a.key || !a.label || !["session", "watch"].includes(a.kind)) throw new Error(`Invalid action in config: ${JSON.stringify(a)}`);
+    if (a.hidden !== undefined && typeof a.hidden !== "boolean") throw new Error(`Action ${a.key}: hidden must be true or false`);
     if (keys.has(a.key)) throw new Error(`Duplicate action key: ${a.key}`);
     if (a.kind === "session" && !a.prompt) throw new Error(`Action ${a.key} needs a prompt`);
     keys.add(a.key);

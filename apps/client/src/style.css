@@ -139,3 +139,5 @@ input:focus, textarea:focus, button:focus-visible { outline: 2px solid var(--acc
 .toast .ghost { color: #cbd5e1; padding: 0 4px; line-height: 1.2; }
 .toast .ghost:hover { color: #fff; background: rgba(255, 255, 255, .15); }
 .ctx-menu button.danger:hover, .ctx-menu button.danger:focus-visible { color: #f97066; }
+
+.update-banner { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); z-index: 11; display: flex; gap: 12px; align-items: center; background: #1d2939; color: #fff; padding: 8px 14px; border-radius: 6px; border-left: 4px solid #2e90fa; box-shadow: 0 4px 14px rgba(0, 0, 0, .3); }

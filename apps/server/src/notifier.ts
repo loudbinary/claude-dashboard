@@ -13,12 +13,17 @@ import type { Session, Watch } from "./db";
  * toasts again until its state changes.
  */
 
+export type Scenario = "reminder" | "urgent" | "default";
+
 export interface NotificationsConfig {
   enabled: boolean;
   /** States that raise a toast. Empty = every status marked `attention: true` under ui.status. */
   states: string[];
-  /** "reminder" stays on screen until clicked; "default" slides away into the notification centre. */
-  scenario: "reminder" | "default";
+  /**
+   * "reminder" stays on screen until clicked; "urgent" does too and also breaks through Do Not Disturb;
+   * "default" slides away into the notification centre.
+   */
+  scenario: Scenario;
   /** Only notify if the item is still waiting this long, so a reply you give straight away raises nothing. */
   delay_seconds: number;
   /** Address the toast opens. Empty = the dashboard's own host and port. */
@@ -116,7 +121,7 @@ const xml = (s: string) => s.replace(/[<>&"']/g, (c) => ({ "<": "&lt;", ">": "&g
  * installed. The app name is registered under HKCU\Software\Classes\AppUserModelId so the toast is
  * labelled with it. Toast text travels base64-encoded, so session text is never parsed as script.
  */
-export function windowsToasts(appName: string, scenario: "reminder" | "default"): ToastBackend {
+export function windowsToasts(appName: string, scenario: Scenario): ToastBackend {
   const appId = "ClaudeDashboard.Notifications";
   const run = (script: string) => {
     try {
@@ -135,10 +140,11 @@ $appId = '${appId}'
 
   return {
     show(t) {
-      const toast = `<toast scenario="${scenario === "reminder" ? "reminder" : "default"}" activationType="protocol" launch="${xml(t.url)}">`
+      const toast = `<toast scenario="${scenario}" activationType="protocol" launch="${xml(t.url)}">`
         + `<visual><binding template="ToastGeneric"><text>${xml(t.title)}</text><text>${xml(t.body)}</text></binding></visual>`
         + `<actions><action content="Open session" activationType="protocol" arguments="${xml(t.url)}"/>`
-        + `<action content="Dismiss" activationType="system" arguments="dismiss"/></actions>`
+        // Windows downgrades reminder toasts to normal ones unless there is a button with activationType="background".
+        + `<action content="Acknowledge" activationType="background" arguments="ack"/></actions>`
         + `<audio src="ms-winsoundevent:Notification.Reminder"/></toast>`;
       run(prelude + `$key = 'HKCU:\\Software\\Classes\\AppUserModelId\\' + $appId
 if (-not (Test-Path $key)) { $null = New-Item -Path $key -Force }

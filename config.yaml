@@ -41,6 +41,7 @@ watch:
 #   kind: session -> starts a new Claude session with `prompt`
 #   kind: watch   -> polls a pipeline run and raises a status when it needs you
 #   accepts: pr | run | incident -> what kind of URL the button expects (read from the clipboard)
+#   hidden: true -> not shown as a button (still usable by key, e.g. by the Teams sweep)
 #   prompt placeholders: {url} {title} {provider} {details} (details = data the provider prefetches, e.g. PagerDuty alerts)
 actions:
   - key: review_pr
@@ -71,10 +72,12 @@ actions:
     model:                     # empty = the CLI default; or sonnet | opus | haiku | a full model id (this action only)
     permission_mode:           # empty = use the workspace's Claude settings
     allowed_tools: []
-  # Started by the Teams sweep (teams_sweep.action). It also shows as a button, since it accepts a PR URL.
+  # Started by the Teams sweep (teams_sweep.action). Hidden from the buttons: its prompt needs the
+  # sweep's {sender}, {source} and {message_url}, which a manual click cannot fill.
   # Same review as above, plus where the link came from.
   - key: review_pr_teams
     label: Review PR (from Teams)
+    hidden: true               # not shown as a button; the sweep still starts it by key
     kind: session
     accepts: pr
     name: "PR review: {title}"
@@ -168,7 +171,7 @@ pr_comments:
 notifications:
   enabled: true
   states: []               # empty = every status below marked attention: true
-  scenario: reminder       # reminder = stays on screen until clicked | default = slides into the notification centre
+  scenario: reminder       # reminder = stays on screen until clicked | urgent = same, and also breaks through Do Not Disturb | default = slides into the notification centre
   delay_seconds: 15        # skip the toast if you answer within this long
   base_url:                # empty = http://<server.host>:<server.port>
   app_name: Claude Dashboard
