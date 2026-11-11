@@ -76,6 +76,22 @@ input:focus, textarea:focus, button:focus-visible { outline: 2px solid var(--acc
 .note { border-left: 3px solid var(--line); padding: 2px 0 2px 10px; margin-bottom: 10px; }
 .note.user { border-color: var(--accent); }
 .note strong { font-size: 12px; color: var(--muted); }
+/* Draft review comments: edited here, posted to the pull request only on request. */
+.drafts { display: grid; gap: 8px; }
+.drafts-head { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; font-size: 12px; }
+.verdict { font-weight: 600; padding: 2px 8px; border-radius: 999px; color: #fff; }
+.verdict.clean { background: #12b76a; }
+.verdict.changes { background: #f79009; }
+.draft { display: grid; gap: 4px; border-left: 3px solid var(--line); padding-left: 10px; }
+.draft.posted { border-color: #12b76a; opacity: .75; }
+.draft.failed { border-color: #d92d20; }
+.draft .pick { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 12px; }
+.draft textarea { width: 100%; resize: vertical; }
+.sev { font-size: 11px; font-weight: 600; text-transform: uppercase; padding: 1px 7px; border-radius: 999px; background: var(--line); color: var(--text); }
+.sev.blocker { background: #d92d20; color: #fff; }
+.sev.major { background: #f79009; color: #fff; }
+.err { color: #f97066; }
+.drafts .action { justify-self: start; }
 .detail footer { margin-top: auto; display: grid; gap: 8px; border-top: 1px solid var(--line); padding-top: 12px; }
 .detail footer .ghost { justify-self: start; }
 

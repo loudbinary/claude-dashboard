@@ -41,6 +41,15 @@ export interface SweepPr {
   first_seen_ts: number; decision: SweepDecision; session_id: string | null; checked_ts: number | null;
 }
 
+export type DraftStatus = "pending" | "posted" | "skipped" | "failed";
+export interface PrSession {
+  session_id: string; pr_url: string | null; verdict: string | null; summary: string | null; summary_thread_id: string | null;
+}
+export interface PrDraft {
+  session_id: string; idx: number; file: string; line: number; end_line: number | null; severity: string; comment: string;
+  status: DraftStatus; thread_id: string | null; error: string | null; posted_at: number | null;
+}
+
 export interface EventRow { id: number; session_id: string; type: string; payload: string; ts: number }
 
 const clip = (s: string, n = 80) => (s.length > n ? s.slice(0, n - 1) + "…" : s);
@@ -72,6 +81,12 @@ export class Store {
       CREATE TABLE IF NOT EXISTS sweep_prs (
         pr_key TEXT PRIMARY KEY, url TEXT NOT NULL, source TEXT NOT NULL, sender TEXT, message_url TEXT,
         first_seen_ts INTEGER NOT NULL, decision TEXT NOT NULL, session_id TEXT, checked_ts INTEGER);
+      CREATE TABLE IF NOT EXISTS pr_sessions (
+        session_id TEXT PRIMARY KEY, pr_url TEXT, verdict TEXT, summary TEXT, summary_thread_id TEXT);
+      CREATE TABLE IF NOT EXISTS pr_drafts (
+        session_id TEXT NOT NULL, idx INTEGER NOT NULL, file TEXT NOT NULL, line INTEGER NOT NULL, end_line INTEGER,
+        severity TEXT NOT NULL, comment TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending',
+        thread_id TEXT, error TEXT, posted_at INTEGER, PRIMARY KEY (session_id, idx));
     `);
     // Databases from before 'seen' existed: add the column (existing rows start unseen).
     for (const table of ['sessions', 'watches']) {
@@ -133,6 +148,56 @@ export class Store {
   addEvent(sessionId: string, type: string, payload: Record<string, unknown>, now = Date.now()) {
     this.db.query("INSERT INTO events (session_id, type, payload, ts) VALUES (?,?,?,?)")
       .run(sessionId, type, JSON.stringify(payload), now);
+  }
+
+  /** Remembers which pull request a review session is about. */
+  linkSessionPr(sessionId: string, prUrl: string) {
+    this.db.query(`INSERT INTO pr_sessions (session_id, pr_url) VALUES (?,?)
+      ON CONFLICT(session_id) DO UPDATE SET pr_url = excluded.pr_url`).run(sessionId, prUrl);
+  }
+
+  getPrSession(sessionId: string): PrSession | null {
+    return this.db.query("SELECT * FROM pr_sessions WHERE session_id = ?").get(sessionId) as PrSession | null;
+  }
+
+  listDrafts(sessionId: string): PrDraft[] {
+    return this.db.query("SELECT * FROM pr_drafts WHERE session_id = ? ORDER BY idx").all(sessionId) as PrDraft[];
+  }
+
+  getDraft(sessionId: string, idx: number): PrDraft | null {
+    return this.db.query("SELECT * FROM pr_drafts WHERE session_id = ? AND idx = ?").get(sessionId, idx) as PrDraft | null;
+  }
+
+  /**
+   * Stores the drafts of a finished review. Only rows still pending are replaced; posted, failed and skipped
+   * rows are kept, and new rows are numbered after the highest existing idx so nothing collides.
+   * The summary text is refreshed unless it was already posted.
+   */
+  saveDrafts(sessionId: string, d: { summary: string; verdict: string; comments: { file: string; line: number; end_line: number | null; severity: string; comment: string }[] }) {
+    this.db.transaction(() => {
+      this.db.query(`INSERT INTO pr_sessions (session_id, verdict, summary) VALUES (?,?,?)
+        ON CONFLICT(session_id) DO UPDATE SET verdict = excluded.verdict,
+          summary = CASE WHEN pr_sessions.summary_thread_id IS NULL THEN excluded.summary ELSE pr_sessions.summary END`)
+        .run(sessionId, d.verdict, d.summary);
+      this.db.query("DELETE FROM pr_drafts WHERE session_id = ? AND status = 'pending'").run(sessionId);
+      const max = (this.db.query("SELECT COALESCE(MAX(idx), 0) AS m FROM pr_drafts WHERE session_id = ?").get(sessionId) as { m: number }).m;
+      const ins = this.db.query("INSERT INTO pr_drafts (session_id, idx, file, line, end_line, severity, comment) VALUES (?,?,?,?,?,?,?)");
+      d.comments.forEach((c, i) => ins.run(sessionId, max + i + 1, c.file, c.line, c.end_line, c.severity, c.comment));
+    })();
+  }
+
+  markDraftPosted(sessionId: string, idx: number, comment: string, threadId: string, now = Date.now()) {
+    this.db.query("UPDATE pr_drafts SET status = 'posted', comment = ?, thread_id = ?, error = NULL, posted_at = ? WHERE session_id = ? AND idx = ?")
+      .run(comment, threadId, now, sessionId, idx);
+  }
+
+  markDraftFailed(sessionId: string, idx: number, comment: string, error: string) {
+    this.db.query("UPDATE pr_drafts SET status = 'failed', comment = ?, error = ? WHERE session_id = ? AND idx = ?")
+      .run(comment, error, sessionId, idx);
+  }
+
+  setSummaryPosted(sessionId: string, summary: string, threadId: string) {
+    this.db.query("UPDATE pr_sessions SET summary = ?, summary_thread_id = ? WHERE session_id = ?").run(summary, threadId, sessionId);
   }
 
   /** Marks a session as seen without touching its updated time. */

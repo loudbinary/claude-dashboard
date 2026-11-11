@@ -1,4 +1,4 @@
-import type { PrStatus, Provider, Ref, RunStatus } from "./types";
+import type { PrStatus, Provider, Ref, RunStatus, ThreadInput } from "./types";
 
 type Fetch = typeof fetch;
 
@@ -24,6 +24,13 @@ export function azureDevOps(token: string | undefined, apiVersion = "7.1", doFet
     const res = await doFetch(url, { headers });
     // A sign-in page (HTML 203) comes back when the token is missing or lacks scope.
     if (!res.ok || res.status === 203) throw new Error(`Azure DevOps ${res.status} for ${url}`);
+    return res.json();
+  }
+
+  async function post(url: string, body: unknown) {
+    const res = await doFetch(url, { method: "POST", headers: { ...headers, "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    // 203 is the sign-in page: the token is missing or lacks write scope.
+    if (!res.ok || res.status === 203) throw new Error(`Azure DevOps ${res.status} posting to ${url}`);
     return res.json();
   }
 
@@ -62,6 +69,23 @@ export function azureDevOps(token: string | undefined, apiVersion = "7.1", doFet
         reviewers: (pr.reviewers ?? []).map((r: any) => ({ uniqueName: r.uniqueName ?? "", vote: Number(r.vote ?? 0) })),
         title: pr.title ?? ref.title,
       };
+    },
+
+    async postThread(ref: Ref, input: ThreadInput): Promise<string> {
+      const body: Record<string, unknown> = {
+        comments: [{ parentCommentId: 0, content: input.content, commentType: 1 }],
+        status: "active",
+      };
+      if (input.filePath && input.line) {
+        body.threadContext = {
+          filePath: input.filePath,
+          rightFileStart: { line: input.line, offset: 1 },
+          rightFileEnd: { line: input.endLine ?? input.line, offset: 1 },
+        };
+      }
+      const out = await post(`${ref.base}/_apis/git/repositories/${encodeURIComponent(ref.repo!)}/pullRequests/${ref.id}/threads?api-version=${apiVersion}`, body);
+      if (out?.id === undefined || out?.id === null) throw new Error("Azure DevOps did not return a thread id");
+      return String(out.id);
     },
 
     async runStatus(ref: Ref): Promise<RunStatus> {

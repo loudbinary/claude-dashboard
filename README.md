@@ -97,6 +97,35 @@ action the tools it needs through `allowed_tools`; the session needs `gh` or `az
 wins over a `--model` in `claude.extra_args`. `review_pr` and `review_pr_teams` both have it, so PR reviews can use a
 different model from everything else. It is unrelated to `teams_sweep.model`, which is only the cheap scanner below.
 
+### Posting review comments to the pull request
+
+Azure DevOps has no draft or pending comment state, so review drafts live in the dashboard and are posted only when
+you click. The Claude review session never posts: `review_pr` and `review_pr_teams` forbid it, and the dashboard
+server does the posting, using the existing `azure_devops` provider token (`token_env`). That token needs the
+**Code (read & write)** scope.
+
+- **Output format**: both review prompts end the final message with `## Summary`, a `Verdict: clean` or
+  `Verdict: needs changes` line, a `## Draft comments` table, and a fenced block whose info string is `pr-comments`:
+  `{"summary", "verdict", "comments": [{"file", "line", "end_line"?, "severity", "comment"}]}`. `file` is relative to
+  the repository root with a leading slash; lines refer to the PR source (right) side. Severity is `blocker`,
+  `major`, `minor` or `nit`.
+- **Linking**: starting an action that accepts a PR URL records which PR the session reviews.
+- **Parsing**: when a dashboard-started session finishes, the LAST `pr-comments` block is validated strictly (exact
+  keys and types, at most 100 comments, comments clipped to 4000 characters) and stored as pending drafts. A missing or
+  malformed block stores nothing and the session detail says "no structured drafts found". After a reply or resume,
+  a new valid block replaces only the drafts still pending; posted and failed ones are kept.
+- **Panel**: in the expanded session, "Draft comments (N)" shows the verdict, an editable summary with an
+  "include summary" checkbox, and one row per draft (checkbox, `file:line`, severity, editable text, then the status
+  or a link to the thread once posted). "Post selected" asks for confirmation with the count first.
+- **Posting**: `POST /api/sessions/:id/drafts/post` with `{items: [{idx, comment}], include_summary?, summary?}`.
+  It re-checks the PR is still active (refused when completed or abandoned), posts each selected pending or failed
+  draft as a file thread (the summary as a general thread) with your edited text, and reports partial failures; failed
+  ones can be retried and posted ones are never reposted. Every attempt is recorded in the session's events as
+  `PrCommentsPosted` (PR URL, idx list, thread ids, failures, timestamp). `GET /api/sessions/:id/drafts` returns
+  the drafts.
+- **Footer**: `pr_comments.footer` in `config.yaml` is appended (after a blank line) to every posted comment,
+  including the summary. Set it to an empty string to disable it.
+
 ### Teams PR sweep
 
 The dashboard can watch Teams chats and channels for Azure DevOps pull request links and start a PR review session
@@ -191,7 +220,7 @@ Set under `ui.status`. States with `attention: true` sort to the top, tint the r
 ```
 config.yaml                 shared settings, buttons, colors
 hooks/settings.example.json Claude Code hook config
-apps/server/src/            app.ts (routes) state.ts (status rules) db.ts launcher.ts watcher.ts providers/
+apps/server/src/            app.ts (routes) state.ts (status rules) db.ts launcher.ts drafts.ts (review drafts) watcher.ts providers/
 apps/server/test/           bun test
 apps/client/src/            App.vue, components/, api.ts
 ```

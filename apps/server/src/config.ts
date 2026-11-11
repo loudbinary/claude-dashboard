@@ -49,6 +49,8 @@ export interface Config {
   ui: { inactive_after_minutes: number; status: Record<string, StatusStyle>; seen_color?: string };
   notifications: NotificationsConfig;
   teams_sweep: TeamsSweepConfig;
+  /** Posting approved review drafts to the pull request. Empty footer = none. */
+  pr_comments: { footer: string };
 }
 
 const teamsSweepDefaults: TeamsSweepConfig = {
@@ -82,6 +84,8 @@ export function loadConfig(path = process.env.CLAUDE_DASHBOARD_CONFIG ?? resolve
   if (existsSync(local)) cfg = deepMerge(cfg, parse(readFileSync(local, "utf8")));
   cfg.notifications = deepMerge(notificationDefaults, cfg.notifications ?? {});
   if (!["reminder", "default"].includes(cfg.notifications.scenario)) throw new Error(`notifications.scenario must be "reminder" or "default"`);
+
+  cfg.pr_comments = { footer: typeof cfg.pr_comments?.footer === "string" ? cfg.pr_comments.footer : "" };
 
   cfg.teams_sweep = deepMerge(teamsSweepDefaults, cfg.teams_sweep ?? {});
 

@@ -2,6 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { api, confirmRemove, type Session, type SessionDetail, type StatusStyle } from "../api";
 import { popOut, selectionIn, type Snippet } from "../popout";
+import DraftsPanel from "./DraftsPanel.vue";
 import Markdown from "./Markdown.vue";
 import StatusChip from "./StatusChip.vue";
 
@@ -125,6 +126,8 @@ async function remove() {
       <h3>Latest from Claude</h3>
       <Markdown :text="session.last_message" />
     </section>
+
+    <DraftsPanel v-if="session.source === 'dashboard'" :session="session" @toast="(t, e) => emit('toast', t, e)" />
 
     <section>
       <h3>What you sent</h3>

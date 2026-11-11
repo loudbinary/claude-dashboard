@@ -18,6 +18,14 @@ export interface PrStatus {
   title: string;
 }
 
+export interface ThreadInput {
+  content: string;
+  /** Repo-root-relative path with a leading slash. Omit for a general (PR-level) thread. */
+  filePath?: string;
+  line?: number;
+  endLine?: number;
+}
+
 export interface Provider {
   key: string;
   /** Parse a PR or pipeline-run URL. Null when the URL is not for this provider. */
@@ -26,6 +34,8 @@ export interface Provider {
   runStatus(ref: Ref): Promise<RunStatus>;
   /** Current state of a pull request (used by the Teams sweep). Optional: not every provider has it. */
   prStatus?(ref: Ref): Promise<PrStatus>;
+  /** Posts a comment thread on a pull request and returns the thread id. Optional: not every provider can. */
+  postThread?(ref: Ref, input: ThreadInput): Promise<string>;
   /** Optional details fetched for a session prompt (the `{details}` placeholder). */
   context?(ref: Ref): Promise<string>;
 }

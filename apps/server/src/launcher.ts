@@ -1,5 +1,6 @@
 import type { Config } from "./config";
 import type { Session, Store } from "./db";
+import { extractDrafts } from "./drafts";
 
 export interface LaunchOptions {
   prompt: string;
@@ -101,6 +102,14 @@ export function makeStreamHandler(store: Store, o: LaunchOptions, fallbackCwd: s
     } else if (msg.type === "result") {
       state.finished = true;
       update({ state: msg.is_error ? "failed" : "waiting_reply", ...(typeof msg.result === "string" ? { last_message: msg.result } : {}) });
+      // A PR review ends with a `pr-comments` block: keep its drafts for the dashboard to post on request.
+      // A missing or malformed block leaves any earlier drafts as they were.
+      if (live() && !msg.is_error) {
+        try {
+          const drafts = extractDrafts(typeof msg.result === "string" ? msg.result : store.getSession(state.sessionId!)?.last_message);
+          if (drafts) store.saveDrafts(state.sessionId!, drafts);
+        } catch { /* drafts are optional; never break the stream */ }
+      }
     }
   }
   return { handle, state, update };

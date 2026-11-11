@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { join, normalize, resolve } from "node:path";
 import type { ActionConfig, Config } from "./config";
 import { repoRoot } from "./config";
-import type { Session, Store, Watch } from "./db";
+import type { PrSession, Session, Store, Watch } from "./db";
 import { launch as realLaunch, stopSession as realStop, type LaunchOptions } from "./launcher";
 import { resolveUrl } from "./providers";
 import type { Provider } from "./providers/types";
@@ -69,6 +69,8 @@ export async function startAction(deps: ActionDeps, action: ActionConfig, url: s
       cwd: action.cwd, permission_mode: action.permission_mode, allowed_tools: action.allowed_tools,
       model: action.model || undefined,
     }, (s) => broadcast({ type: "session", data: s }));
+    // Remember which PR this review is about, so its drafts can be posted back to it later.
+    if (hit.ref.kind === "pr") deps.store?.linkSessionPr(id, url);
     return { ok: true, kind: "session", session_id: id };
   } catch (err) {
     return { ok: false, status: 502, error: (err as Error).message };
@@ -104,6 +106,80 @@ export function createApp(deps: AppDeps) {
     const r = await startAction(actionDeps, action, url);
     if (!r.ok) return fail(r.status, r.error);
     return r.kind === "watch" ? json({ watch: r.watch }, 201) : json({ session_id: r.session_id }, 201);
+  }
+
+  /** Posts the approved drafts of a review session to its pull request. Never called by Claude, only by a click. */
+  async function postDrafts(id: string, link: PrSession | null, b: any): Promise<Response> {
+    if (!link?.pr_url) return fail(409, "This session is not linked to a pull request.");
+    const items = b?.items;
+    if (!Array.isArray(items) || !items.every((i: any) => Number.isInteger(i?.idx) && typeof i?.comment === "string" && i.comment.trim())) {
+      return fail(400, "Expected JSON { items: [{ idx, comment }], include_summary?, summary? }");
+    }
+    if (new Set(items.map((i: any) => i.idx)).size !== items.length) return fail(400, "Duplicate idx in items");
+    const wantSummary = b.include_summary === true;
+    if (wantSummary && b.summary !== undefined && typeof b.summary !== "string") return fail(400, "summary must be a string");
+    for (const i of items) {
+      if (!store.getDraft(id, i.idx)) return fail(400, `No draft ${i.idx} for this session`);
+    }
+    const hit = resolveUrl(providers, link.pr_url);
+    if (!hit || hit.ref.kind !== "pr" || !hit.provider.postThread || !hit.provider.prStatus) {
+      return fail(409, "The provider for this pull request cannot post comments (or is disabled in config).");
+    }
+    const { provider, ref } = hit;
+    // Closed pull requests get no new comments.
+    try {
+      const st = await provider.prStatus!(ref);
+      if (st.status !== "active") return fail(409, `The pull request is ${st.status}, not active. Nothing was posted.`);
+    } catch (err) {
+      return fail(502, `Could not check the pull request: ${(err as Error).message}`);
+    }
+
+    const footer = cfg.pr_comments?.footer ?? "";
+    const withFooter = (text: string) => text.trim() + (footer ? "\n\n" + footer : "");
+    const posted: { idx: number; thread_id: string }[] = [];
+    const failed: { idx: number; error: string }[] = [];
+    const skipped: number[] = [];
+    let summaryResult: { thread_id: string } | { error: string } | null = null;
+
+    if (wantSummary && link.summary_thread_id) summaryResult = { thread_id: link.summary_thread_id };
+    else if (wantSummary) {
+      const text = (typeof b.summary === "string" ? b.summary : link.summary ?? "").trim();
+      if (text) {
+        try {
+          const tid = await provider.postThread!(ref, { content: withFooter(text) });
+          store.setSummaryPosted(id, text, tid);
+          summaryResult = { thread_id: tid };
+        } catch (err) { summaryResult = { error: (err as Error).message }; }
+      }
+    }
+
+    for (const i of items as { idx: number; comment: string }[]) {
+      const d = store.getDraft(id, i.idx)!;
+      if (d.status === "posted") { skipped.push(i.idx); continue; }
+      const text = i.comment.trim();
+      try {
+        const tid = await provider.postThread!(ref, { content: withFooter(text), filePath: d.file, line: d.line, endLine: d.end_line ?? undefined });
+        store.markDraftPosted(id, i.idx, text, tid);
+        posted.push({ idx: i.idx, thread_id: tid });
+      } catch (err) {
+        const error = (err as Error).message;
+        store.markDraftFailed(id, i.idx, text, error);
+        failed.push({ idx: i.idx, error });
+      }
+    }
+
+    const summaryPosted = summaryResult && "thread_id" in summaryResult && !link.summary_thread_id;
+    if (posted.length || failed.length || summaryResult) {
+      store.addEvent(id, "PrCommentsPosted", {
+        pr_url: link.pr_url,
+        idx: posted.map((p) => p.idx),
+        thread_ids: posted.map((p) => p.thread_id),
+        ...(summaryPosted ? { summary_thread_id: (summaryResult as { thread_id: string }).thread_id } : {}),
+        failures: [...failed, ...(summaryResult && "error" in summaryResult ? [{ idx: "summary", error: summaryResult.error }] : [])],
+        ts: new Date().toISOString(),
+      });
+    }
+    return json({ posted, failed, skipped, summary: summaryResult, drafts: store.listDrafts(id), summary_thread_id: store.getPrSession(id)?.summary_thread_id ?? null });
   }
 
   return async function handle(req: Request): Promise<Response> {
@@ -194,6 +270,20 @@ export function createApp(deps: AppDeps) {
       } catch (err) {
         return fail(502, (err as Error).message);
       }
+    }
+
+    const dm = path.match(/^\/api\/sessions\/([^/]+)\/drafts(\/post)?$/);
+    if (dm) {
+      const id = decodeURIComponent(dm[1]!);
+      if (!store.getSession(id)) return fail(404, "Session not found");
+      const link = store.getPrSession(id);
+      if (!dm[2] && m === "GET") {
+        return json({
+          pr_url: link?.pr_url ?? null, verdict: link?.verdict ?? null, summary: link?.summary ?? null,
+          summary_thread_id: link?.summary_thread_id ?? null, drafts: store.listDrafts(id),
+        });
+      }
+      if (dm[2] && m === "POST") return postDrafts(id, link, await body(req));
     }
 
     const sm = path.match(/^\/api\/sessions\/([^/]+)(\/reply|\/seen|\/stop)?$/);

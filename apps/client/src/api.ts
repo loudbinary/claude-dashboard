@@ -15,6 +15,15 @@ export interface SweepInfo {
 }
 export interface Note { role: "user" | "assistant"; text: string; ts: string | null }
 export interface EventRow { id: number; type: string; payload: string; ts: number }
+export interface Draft {
+  idx: number; file: string; line: number; end_line: number | null; severity: "blocker" | "major" | "minor" | "nit";
+  comment: string; status: "pending" | "posted" | "skipped" | "failed"; thread_id: string | null; error: string | null; posted_at: number | null;
+}
+export interface DraftsInfo { pr_url: string | null; verdict: string | null; summary: string | null; summary_thread_id: string | null; drafts: Draft[] }
+export interface PostDraftsResult {
+  posted: { idx: number; thread_id: string }[]; failed: { idx: number; error: string }[]; skipped: number[];
+  summary: { thread_id: string } | { error: string } | null;
+}
 export interface SessionDetail { session: Session; events: EventRow[]; notes: Note[] }
 
 /** Confirmation shared by every Remove button. */
@@ -49,6 +58,9 @@ export const api = {
   stopSession: (id: string) => call<{ stopped: boolean }>(`/api/sessions/${encodeURIComponent(id)}/stop`, "POST"),
   reply: (id: string, text: string) => call(`/api/sessions/${encodeURIComponent(id)}/reply`, "POST", { text }),
   runAction: (key: string, url: string) => call(`/api/actions/${key}`, "POST", { url }),
+  drafts: (id: string) => call<DraftsInfo>(`/api/sessions/${encodeURIComponent(id)}/drafts`),
+  postDrafts: (id: string, items: { idx: number; comment: string }[], includeSummary: boolean, summary: string) =>
+    call<PostDraftsResult>(`/api/sessions/${encodeURIComponent(id)}/drafts/post`, "POST", { items, include_summary: includeSummary, summary }),
   sweep: () => call<SweepInfo>("/api/sweep"),
   watches: () => call<Watch[]>("/api/watches"),
   markSeen: (id: string) => call<Session>(`/api/sessions/${encodeURIComponent(id)}/seen`, "POST"),

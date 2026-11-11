@@ -50,8 +50,24 @@ actions:
     name: "PR review: {title}"
     prompt: |
       Review the pull request at {url}.
-      Read the description and the full diff, then report: a short summary, correctness
-      problems, security concerns, and suggested changes. Do not push or post comments.
+      Read the description and the full diff, then review it for correctness problems, security
+      concerns, and suggested changes, as draft comments.
+      Do NOT post any comment, vote, approve, reject, or change the pull request in any way, and do
+      not push. The dashboard posts approved drafts; Charles reviews and approves them first.
+      Your final message must have exactly this structure and nothing after it:
+      ## Summary
+      (a short summary of the change and your findings)
+      A line with only "Verdict: clean" or "Verdict: needs changes", on its own line.
+      ## Draft comments
+      A numbered markdown table with the columns: #, file, line, severity, comment. Severity is one of
+      blocker, major, minor, nit. Lines refer to the PR source (right) side of the diff.
+      Then one fenced code block whose info string is pr-comments, containing JSON of this shape:
+      ```pr-comments
+      {"summary": "string", "verdict": "clean" | "needs changes", "comments": [
+        {"file": "/repo/root/relative/path", "line": 12, "end_line": 14, "severity": "blocker|major|minor|nit", "comment": "string"}]}
+      ```
+      "file" is the path from the repository root with a leading slash. "end_line" is optional. Use an
+      empty comments array when there is nothing to say. The table and the JSON must list the same comments.
     model:                     # empty = the CLI default; or sonnet | opus | haiku | a full model id (this action only)
     permission_mode:           # empty = use the workspace's Claude settings
     allowed_tools: []
@@ -65,12 +81,24 @@ actions:
     prompt: |
       Review the pull request at {url}.
       It was shared by {sender} in the Teams source "{source}": {message_url}
-      Read the description and the full diff, then draft a review: a short summary, correctness
-      problems, security concerns, and suggested changes, as draft comments (file, line, comment).
-      Do NOT post any comment, vote, approve, reject, or change the pull request in any way, and do not
-      push. This is a draft for Charles to approve and post himself.
-      End with a clear verdict line, either "Verdict: clean" or "Verdict: needs changes", followed by the
-      draft comments, ready for approval.
+      Read the description and the full diff, then draft a review: correctness problems, security
+      concerns, and suggested changes, as draft comments.
+      Do NOT post any comment, vote, approve, reject, or change the pull request in any way, and do
+      not push. The dashboard posts approved drafts; Charles reviews and approves them first.
+      Your final message must have exactly this structure and nothing after it:
+      ## Summary
+      (a short summary of the change and your findings)
+      A line with only "Verdict: clean" or "Verdict: needs changes", on its own line.
+      ## Draft comments
+      A numbered markdown table with the columns: #, file, line, severity, comment. Severity is one of
+      blocker, major, minor, nit. Lines refer to the PR source (right) side of the diff.
+      Then one fenced code block whose info string is pr-comments, containing JSON of this shape:
+      ```pr-comments
+      {"summary": "string", "verdict": "clean" | "needs changes", "comments": [
+        {"file": "/repo/root/relative/path", "line": 12, "end_line": 14, "severity": "blocker|major|minor|nit", "comment": "string"}]}
+      ```
+      "file" is the path from the repository root with a leading slash. "end_line" is optional. Use an
+      empty comments array when there is nothing to say. The table and the JSON must list the same comments.
     model:                     # empty = the CLI default; set a model here to review Teams-found PRs with it
     permission_mode:           # empty = use the workspace's Claude settings
     allowed_tools: []
@@ -128,6 +156,12 @@ teams_sweep:
   notify_started: true       # toast when a review starts; the finished toast (with the verdict) comes from notifications:
   me: ""                  # your Azure DevOps sign-in (uniqueName); PRs you already voted on are skipped
   sources: []                # [{ name: "Dev Team", url: "<Teams chat or channel link>" }]
+
+# Posting approved review drafts to the pull request (the "Draft comments" panel in a session's details).
+# Azure DevOps has no draft comment state, so drafts stay in the dashboard until you click "Post selected".
+# Posting uses the azure_devops provider token, which needs Code (read & write).
+pr_comments:
+  footer: "_Drafted with Claude, reviewed and posted by Charles._"   # appended to every posted comment; "" disables
 
 # Windows toast when a session or watch needs you. Clicking it opens the dashboard on that session.
 # The toast is withdrawn once the item no longer needs you. Windows only; ignored elsewhere.
