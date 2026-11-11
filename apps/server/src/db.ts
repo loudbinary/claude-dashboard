@@ -34,6 +34,13 @@ export interface Watch {
   seen: number;
 }
 
+export interface SweepSource { source_key: string; since_ts: number; seen_ids: string; last_run_ts: number | null; last_error: string | null }
+export type SweepDecision = "pending" | "launched" | "approved" | "closed" | "draft" | "voted";
+export interface SweepPr {
+  pr_key: string; url: string; source: string; sender: string | null; message_url: string | null;
+  first_seen_ts: number; decision: SweepDecision; session_id: string | null; checked_ts: number | null;
+}
+
 export interface EventRow { id: number; session_id: string; type: string; payload: string; ts: number }
 
 const clip = (s: string, n = 80) => (s.length > n ? s.slice(0, n - 1) + "…" : s);
@@ -59,6 +66,12 @@ export class Store {
         id INTEGER PRIMARY KEY AUTOINCREMENT, url TEXT NOT NULL, provider TEXT NOT NULL, title TEXT NOT NULL,
         state TEXT NOT NULL, detail TEXT, active INTEGER NOT NULL DEFAULT 1,
         created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+      CREATE TABLE IF NOT EXISTS sweep_sources (
+        source_key TEXT PRIMARY KEY, since_ts INTEGER NOT NULL, seen_ids TEXT NOT NULL DEFAULT '[]',
+        last_run_ts INTEGER, last_error TEXT);
+      CREATE TABLE IF NOT EXISTS sweep_prs (
+        pr_key TEXT PRIMARY KEY, url TEXT NOT NULL, source TEXT NOT NULL, sender TEXT, message_url TEXT,
+        first_seen_ts INTEGER NOT NULL, decision TEXT NOT NULL, session_id TEXT, checked_ts INTEGER);
     `);
     // Databases from before 'seen' existed: add the column (existing rows start unseen).
     for (const table of ['sessions', 'watches']) {
@@ -189,5 +202,51 @@ export class Store {
 
   deleteWatch(id: number) {
     this.db.query("DELETE FROM watches WHERE id = ?").run(id);
+  }
+
+  // Teams sweep state ------------------------------------------------------------------------------
+
+  getSweepSource(key: string): SweepSource | null {
+    return this.db.query("SELECT * FROM sweep_sources WHERE source_key = ?").get(key) as SweepSource | null;
+  }
+
+  listSweepSources(): SweepSource[] {
+    return this.db.query("SELECT * FROM sweep_sources ORDER BY source_key").all() as SweepSource[];
+  }
+
+  /** Creates the row on first sight (the starting point is "now": no backfill). */
+  initSweepSource(key: string, since: number) {
+    this.db.query("INSERT OR IGNORE INTO sweep_sources (source_key, since_ts, seen_ids) VALUES (?,?,'[]')").run(key, since);
+  }
+
+  /** Records a finished scan: advances the high-water mark and the seen ids (capped at 500). */
+  recordSweepScan(key: string, since: number, seenIds: string[], now: number) {
+    this.db.query("UPDATE sweep_sources SET since_ts=?, seen_ids=?, last_run_ts=?, last_error=NULL WHERE source_key=?")
+      .run(since, JSON.stringify(seenIds.slice(-500)), now, key);
+  }
+
+  /** A failed scan keeps the high-water mark and just notes the error. */
+  recordSweepError(key: string, error: string, now: number) {
+    this.db.query("UPDATE sweep_sources SET last_run_ts=?, last_error=? WHERE source_key=?").run(now, error.slice(0, 500), key);
+  }
+
+  getSweepPr(key: string): SweepPr | null {
+    return this.db.query("SELECT * FROM sweep_prs WHERE pr_key = ?").get(key) as SweepPr | null;
+  }
+
+  addSweepPr(pr: Omit<SweepPr, "session_id" | "checked_ts">) {
+    this.db.query(`INSERT OR IGNORE INTO sweep_prs (pr_key, url, source, sender, message_url, first_seen_ts, decision)
+      VALUES (?,?,?,?,?,?,?)`).run(pr.pr_key, pr.url, pr.source, pr.sender, pr.message_url, pr.first_seen_ts, pr.decision);
+  }
+
+  setSweepDecision(key: string, decision: SweepDecision, sessionId: string | null, now: number) {
+    this.db.query("UPDATE sweep_prs SET decision=?, session_id=COALESCE(?, session_id), checked_ts=? WHERE pr_key=?")
+      .run(decision, sessionId, now, key);
+  }
+
+  listSweepPrs(decision?: SweepDecision, limit = 50): SweepPr[] {
+    return (decision
+      ? this.db.query("SELECT * FROM sweep_prs WHERE decision = ? ORDER BY first_seen_ts ASC LIMIT ?").all(decision, limit)
+      : this.db.query("SELECT * FROM sweep_prs ORDER BY first_seen_ts DESC LIMIT ?").all(limit)) as SweepPr[];
   }
 }

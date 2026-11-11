@@ -8,6 +8,11 @@ export interface Session {
   created_at: number; updated_at: number; seen: number;
 }
 export interface Watch { id: number; url: string; provider: string; title: string; state: string; detail: string | null; active: number; updated_at: number; seen: number }
+export interface SweepInfo {
+  enabled: boolean; interval_seconds: number;
+  sources: { name: string; last_run_ts: number | null; last_error: string | null; found: number; launched: number }[];
+  recent: { pr_key: string; url: string; source: string; decision: string; session_id: string | null; first_seen_ts: number }[];
+}
 export interface Note { role: "user" | "assistant"; text: string; ts: string | null }
 export interface EventRow { id: number; type: string; payload: string; ts: number }
 export interface SessionDetail { session: Session; events: EventRow[]; notes: Note[] }
@@ -44,6 +49,7 @@ export const api = {
   stopSession: (id: string) => call<{ stopped: boolean }>(`/api/sessions/${encodeURIComponent(id)}/stop`, "POST"),
   reply: (id: string, text: string) => call(`/api/sessions/${encodeURIComponent(id)}/reply`, "POST", { text }),
   runAction: (key: string, url: string) => call(`/api/actions/${key}`, "POST", { url }),
+  sweep: () => call<SweepInfo>("/api/sweep"),
   watches: () => call<Watch[]>("/api/watches"),
   markSeen: (id: string) => call<Session>(`/api/sessions/${encodeURIComponent(id)}/seen`, "POST"),
   markWatchSeen: (id: number) => call<Watch>(`/api/watches/${id}/seen`, "POST"),

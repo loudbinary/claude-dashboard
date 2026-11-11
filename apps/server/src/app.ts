@@ -24,6 +24,57 @@ export interface AppDeps {
   clientDir?: string;
 }
 
+/** What starting an action needs; shared by the buttons (app) and the Teams sweep. */
+export interface ActionDeps {
+  providers: Provider[];
+  store?: Store;
+  broadcast: Broadcast;
+  launch: (o: LaunchOptions, onChange: (s: Session) => void) => Promise<string>;
+  pollNow?: () => void;
+}
+
+export type ActionResult =
+  | { ok: true; kind: "session"; session_id: string }
+  | { ok: true; kind: "watch"; watch: Watch }
+  | { ok: false; status: number; error: string };
+
+/**
+ * Starts an action for a URL: a session (launch with the filled prompt) or a watch. `extraVars` fill extra
+ * placeholders in the prompt and name (for example {source} and {sender} from the Teams sweep).
+ */
+export async function startAction(deps: ActionDeps, action: ActionConfig, url: string, extraVars: Record<string, string> = {}): Promise<ActionResult> {
+  const { providers, broadcast } = deps;
+  const hit = resolveUrl(providers, url);
+  if (!hit) return { ok: false, status: 400, error: "That is not a recognized pull request, pipeline run or PagerDuty incident URL (or its provider is disabled in config)." };
+  if (action.accepts && hit.ref.kind !== action.accepts) {
+    return { ok: false, status: 400, error: `"${action.label}" expects a ${KIND_LABEL[action.accepts]} URL.` };
+  }
+  if (action.kind === "watch") {
+    if (hit.ref.kind !== "run") return { ok: false, status: 400, error: `"${action.label}" can only watch pipeline runs.` };
+    const w: Watch = deps.store!.addWatch(url, hit.provider.key, hit.ref.title);
+    broadcast({ type: "watch", data: w });
+    deps.pollNow?.();
+    return { ok: true, kind: "watch", watch: w };
+  }
+  let details = "";
+  if (action.prompt!.includes("{details}") && hit.provider.context) {
+    try { details = await hit.provider.context(hit.ref); }
+    catch (err) { return { ok: false, status: 502, error: `Could not read ${hit.ref.title}: ${(err as Error).message}` }; }
+  }
+  const vars = { ...extraVars, url, title: hit.ref.title, provider: hit.provider.key, details };
+  try {
+    const id = await deps.launch({
+      prompt: fill(action.prompt!, vars),
+      name: action.name ? fill(action.name, vars) : undefined,
+      cwd: action.cwd, permission_mode: action.permission_mode, allowed_tools: action.allowed_tools,
+      model: action.model || undefined,
+    }, (s) => broadcast({ type: "session", data: s }));
+    return { ok: true, kind: "session", session_id: id };
+  } catch (err) {
+    return { ok: false, status: 502, error: (err as Error).message };
+  }
+}
+
 const json = (data: unknown, status = 200) => Response.json(data, { status });
 const fail = (status: number, error: string) => json({ error }, status);
 const KIND_LABEL = { pr: "pull request", run: "pipeline run", incident: "PagerDuty incident" } as const;
@@ -48,35 +99,11 @@ export function createApp(deps: AppDeps) {
   const clientDir = deps.clientDir ?? resolve(repoRoot, "apps/client/dist");
   const onSession = (s: Session) => broadcast({ type: "session", data: s });
 
+  const actionDeps: ActionDeps = { providers, store, broadcast, launch, pollNow: deps.pollNow };
   async function runAction(action: ActionConfig, url: string): Promise<Response> {
-    const hit = resolveUrl(providers, url);
-    if (!hit) return fail(400, "That is not a recognized pull request, pipeline run or PagerDuty incident URL (or its provider is disabled in config).");
-    if (action.accepts && hit.ref.kind !== action.accepts) {
-      return fail(400, `"${action.label}" expects a ${KIND_LABEL[action.accepts]} URL.`);
-    }
-    if (action.kind === "watch") {
-      if (hit.ref.kind !== "run") return fail(400, `"${action.label}" can only watch pipeline runs.`);
-      const w: Watch = store.addWatch(url, hit.provider.key, hit.ref.title);
-      broadcast({ type: "watch", data: w });
-      deps.pollNow?.();
-      return json({ watch: w }, 201);
-    }
-    let details = "";
-    if (action.prompt!.includes("{details}") && hit.provider.context) {
-      try { details = await hit.provider.context(hit.ref); }
-      catch (err) { return fail(502, `Could not read ${hit.ref.title}: ${(err as Error).message}`); }
-    }
-    const vars = { url, title: hit.ref.title, provider: hit.provider.key, details };
-    try {
-      const id = await launch({
-        prompt: fill(action.prompt!, vars),
-        name: action.name ? fill(action.name, vars) : undefined,
-        cwd: action.cwd, permission_mode: action.permission_mode, allowed_tools: action.allowed_tools,
-      }, onSession);
-      return json({ session_id: id }, 201);
-    } catch (err) {
-      return fail(502, (err as Error).message);
-    }
+    const r = await startAction(actionDeps, action, url);
+    if (!r.ok) return fail(r.status, r.error);
+    return r.kind === "watch" ? json({ watch: r.watch }, 201) : json({ session_id: r.session_id }, 201);
   }
 
   return async function handle(req: Request): Promise<Response> {
@@ -103,6 +130,23 @@ export function createApp(deps: AppDeps) {
         seen_color: cfg.ui.seen_color ?? "#667085",
         providers: providers.map((p) => p.key),
         default_cwd: cfg.claude.default_cwd,
+      });
+    }
+
+    if (path === "/api/sweep" && m === "GET") {
+      const ts = cfg.teams_sweep;
+      const prs = store.listSweepPrs(undefined, 200);
+      return json({
+        enabled: ts.enabled,
+        interval_seconds: ts.interval_seconds,
+        sources: store.listSweepSources().map((s) => {
+          const mine = prs.filter((p) => p.source === s.source_key);
+          return {
+            name: s.source_key, last_run_ts: s.last_run_ts, last_error: s.last_error,
+            found: mine.length, launched: mine.filter((p) => p.decision === "launched").length,
+          };
+        }),
+        recent: prs.slice(0, 30),
       });
     }
 

@@ -29,7 +29,7 @@ describe("config", () => {
     expect(deepMerge({ a: { b: 1, c: 2 }, l: [1, 2] }, { a: { c: 3 }, l: [9] })).toEqual({ a: { b: 1, c: 3 }, l: [9] });
   });
   test("shipped config loads with its buttons", () => {
-    expect(cfg.actions.map((a) => a.key)).toEqual(["review_pr", "investigate_pipeline", "analyze_pagerduty", "watch_pipeline"]);
+    expect(cfg.actions.map((a) => a.key)).toEqual(["review_pr", "review_pr_teams", "investigate_pipeline", "analyze_pagerduty", "watch_pipeline"]);
     expect(cfg.ui.status.needs_permission!.attention).toBe(true);
   });
 });

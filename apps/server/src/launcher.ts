@@ -10,6 +10,8 @@ export interface LaunchOptions {
   /** Empty means: do not override; the workspace's Claude settings decide. */
   permission_mode?: string | null;
   allowed_tools?: string[] | null;
+  /** Model for this run (`--model`). Empty means: the CLI default. Wins over a --model in claude.extra_args. */
+  model?: string | null;
 }
 
 /** Claude processes the dashboard started, by session id, while they run. */
@@ -18,7 +20,7 @@ const running = new Map<string, { proc: ReturnType<typeof Bun.spawn>; stopped: b
 export const isRunning = (id: string) => running.has(id);
 
 /** Kills the process and everything it started (MCP servers, shells). */
-async function killTree(proc: ReturnType<typeof Bun.spawn>) {
+export async function killTree(proc: ReturnType<typeof Bun.spawn>) {
   if (process.platform === "win32") {
     await Bun.spawn(["taskkill", "/PID", String(proc.pid), "/T", "/F"], { stdout: "ignore", stderr: "ignore" }).exited;
   }
@@ -47,7 +49,19 @@ export function buildArgs(cfg: Config, o: LaunchOptions): string[] {
   else if (o.name) args.push("--name", o.name);
   if (o.permission_mode) args.push("--permission-mode", o.permission_mode);
   if (o.allowed_tools?.length) args.push("--allowedTools", o.allowed_tools.join(","));
-  return [...args, ...(cfg.claude.extra_args ?? [])];
+  let extra = cfg.claude.extra_args ?? [];
+  if (o.model) {
+    args.push("--model", o.model);
+    // The action's model wins: drop any --model from extra_args so the flag is never duplicated.
+    const kept: string[] = [];
+    for (let i = 0; i < extra.length; i++) {
+      if (extra[i] === "--model") { i++; continue; }
+      if (extra[i]!.startsWith("--model=")) continue;
+      kept.push(extra[i]!);
+    }
+    extra = kept;
+  }
+  return [...args, ...extra];
 }
 
 /**

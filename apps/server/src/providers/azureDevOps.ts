@@ -1,4 +1,4 @@
-import type { Provider, Ref, RunStatus } from "./types";
+import type { PrStatus, Provider, Ref, RunStatus } from "./types";
 
 type Fetch = typeof fetch;
 
@@ -51,6 +51,17 @@ export function azureDevOps(token: string | undefined, apiVersion = "7.1", doFet
         return { provider: "azure_devops", kind: "pr", title: `${rest[2]} !${rest[4]}`, base, repo: rest[2], id: rest[4]! };
       }
       return null;
+    },
+
+    async prStatus(ref: Ref): Promise<PrStatus> {
+      const pr = await get(`${ref.base}/_apis/git/repositories/${encodeURIComponent(ref.repo!)}/pullrequests/${ref.id}?api-version=${apiVersion}`);
+      return {
+        status: String(pr.status ?? ""),
+        isDraft: !!pr.isDraft,
+        createdBy: pr.createdBy?.uniqueName ?? "",
+        reviewers: (pr.reviewers ?? []).map((r: any) => ({ uniqueName: r.uniqueName ?? "", vote: Number(r.vote ?? 0) })),
+        title: pr.title ?? ref.title,
+      };
     },
 
     async runStatus(ref: Ref): Promise<RunStatus> {

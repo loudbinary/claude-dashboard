@@ -1,10 +1,12 @@
-import { createApp, type Broadcast } from "./app";
+import { createApp, startAction, type Broadcast } from "./app";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { loadConfig, repoRoot } from "./config";
 import { Store } from "./db";
 import { createNotifier, windowsToasts } from "./notifier";
 import { buildProviders } from "./providers";
+import { launch as realLaunch } from "./launcher";
+import { claudeScanner, startTeamsSweep } from "./teamsSweep";
 import { startWatcher } from "./watcher";
 
 const cfg = loadConfig();
@@ -22,6 +24,25 @@ const broadcast: Broadcast = (msg) => { server?.publish("stream", JSON.stringify
 
 const watcher = startWatcher(store, providers, cfg.watch.poll_interval_seconds, (w) => broadcast({ type: "watch", data: w }));
 const handle = createApp({ cfg, store, providers, broadcast, pollNow: () => void watcher.tick() });
+
+const sweepEnabled = cfg.teams_sweep.enabled && cfg.teams_sweep.sources.length > 0;
+if (sweepEnabled) {
+  const sweepAction = cfg.actions.find((a) => a.key === cfg.teams_sweep.action)!;
+  const actionDeps = {
+    providers, store, broadcast,
+    launch: (o: Parameters<typeof realLaunch>[2], cb: Parameters<typeof realLaunch>[3]) => realLaunch(cfg, store, o, cb),
+  };
+  const sweep = startTeamsSweep({
+    cfg, store, providers, scanner: claudeScanner(cfg), log: (m) => console.warn(m),
+    launchReview: async (url, vars) => {
+      const r = await startAction(actionDeps, sweepAction, url, vars);
+      if (!r.ok) throw new Error(r.error);
+      if (r.kind !== "session") throw new Error("teams_sweep.action must start a session");
+      return r.session_id;
+    },
+  });
+  void sweep.tick();
+}
 
 server = Bun.serve({
   hostname: cfg.server.host,
@@ -47,3 +68,4 @@ if (resolve(cfg.claude.default_cwd) === repoRoot) {
 if (!existsSync(cfg.claude.default_cwd)) console.warn(`  warning: that folder does not exist on this machine.`);
 console.log(`notifications: ${notify ? `Windows toasts (${cfg.notifications.scenario}, after ${cfg.notifications.delay_seconds}s)` : "off"}`);
 console.log(`providers:${providers.map((p) => p.key).join(", ") || "none"} | database: ${cfg.server.database_path}`);
+console.log(`teams sweep: ${sweepEnabled ? `every ${cfg.teams_sweep.interval_seconds}s, ${cfg.teams_sweep.sources.length} sources, action ${cfg.teams_sweep.action}` : "off"}`);

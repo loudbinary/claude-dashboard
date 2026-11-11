@@ -10,12 +10,22 @@ export interface Ref {
   [k: string]: string;
 }
 
+export interface PrStatus {
+  status: "active" | "completed" | "abandoned" | string;
+  isDraft: boolean;
+  createdBy: string;
+  reviewers: { uniqueName: string; vote: number }[];
+  title: string;
+}
+
 export interface Provider {
   key: string;
   /** Parse a PR or pipeline-run URL. Null when the URL is not for this provider. */
   parse(url: string): Ref | null;
   /** Current status of a pipeline run. */
   runStatus(ref: Ref): Promise<RunStatus>;
+  /** Current state of a pull request (used by the Teams sweep). Optional: not every provider has it. */
+  prStatus?(ref: Ref): Promise<PrStatus>;
   /** Optional details fetched for a session prompt (the `{details}` placeholder). */
   context?(ref: Ref): Promise<string>;
 }

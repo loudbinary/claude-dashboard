@@ -52,6 +52,26 @@ actions:
       Review the pull request at {url}.
       Read the description and the full diff, then report: a short summary, correctness
       problems, security concerns, and suggested changes. Do not push or post comments.
+    model:                     # empty = the CLI default; or sonnet | opus | haiku | a full model id (this action only)
+    permission_mode:           # empty = use the workspace's Claude settings
+    allowed_tools: []
+  # Started by the Teams sweep (teams_sweep.action). It also shows as a button, since it accepts a PR URL.
+  # Same review as above, plus where the link came from.
+  - key: review_pr_teams
+    label: Review PR (from Teams)
+    kind: session
+    accepts: pr
+    name: "PR review: {title}"
+    prompt: |
+      Review the pull request at {url}.
+      It was shared by {sender} in the Teams source "{source}": {message_url}
+      Read the description and the full diff, then draft a review: a short summary, correctness
+      problems, security concerns, and suggested changes, as draft comments (file, line, comment).
+      Do NOT post any comment, vote, approve, reject, or change the pull request in any way, and do not
+      push. This is a draft for Charles to approve and post himself.
+      End with a clear verdict line, either "Verdict: clean" or "Verdict: needs changes", followed by the
+      draft comments, ready for approval.
+    model:                     # empty = the CLI default; set a model here to review Teams-found PRs with it
     permission_mode:           # empty = use the workspace's Claude settings
     allowed_tools: []
   - key: investigate_pipeline
@@ -94,6 +114,19 @@ actions:
     label: Watch pipeline
     kind: watch
     accepts: run
+
+# Watches Teams chats and channels for Azure DevOps pull request links and starts a review session
+# (the `action` above) for each PR that still needs review. Disabled here; enable it and list the
+# sources in config.local.yaml. See the README section "Teams PR sweep".
+teams_sweep:
+  enabled: false
+  interval_seconds: 300
+  active_hours: { days: [1, 2, 3, 4, 5], start: "07:00", end: "19:00", time_zone: America/New_York }  # days: 1 = Monday ... 7 = Sunday
+  model: haiku               # the scanner that only fetches messages; NOT the review model (set `model:` on the action)
+  action: review_pr_teams
+  max_concurrent_reviews: 2
+  me: ""                     # your Azure DevOps sign-in (uniqueName); PRs you already voted on are skipped
+  sources: []                # [{ name: "Dev Team", url: "<Teams chat or channel link>" }]
 
 # Windows toast when a session or watch needs you. Clicking it opens the dashboard on that session.
 # The toast is withdrawn once the item no longer needs you. Windows only; ignored elsewhere.

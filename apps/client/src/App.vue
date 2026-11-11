@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
-import { ago, api, confirmRemove, stream, type AppConfig, type Session, type Watch } from "./api";
+import { ago, api, confirmRemove, stream, type AppConfig, type Session, type SweepInfo, type Watch } from "./api";
 import ActionBar from "./components/ActionBar.vue";
 import SessionDetail from "./components/SessionDetail.vue";
 import StatusChip from "./components/StatusChip.vue";
@@ -8,6 +8,17 @@ import StatusChip from "./components/StatusChip.vue";
 const config = ref<AppConfig | null>(null);
 const sessions = ref<Session[]>([]);
 const watches = ref<Watch[]>([]);
+const sweep = ref<SweepInfo | null>(null);
+const sweepError = computed(() => sweep.value?.sources.find((s) => s.last_error)?.last_error ?? null);
+const sweepText = computed(() => {
+  const s = sweep.value;
+  if (!s?.enabled) return "";
+  const last = Math.max(0, ...s.sources.map((x) => x.last_run_ts ?? 0));
+  const launched = s.sources.reduce((n, x) => n + x.launched, 0);
+  const at = last ? new Date(last).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "waiting";
+  return `Teams sweep: ${at} · ${launched} launched`;
+});
+async function loadSweep() { try { sweep.value = await api.sweep(); } catch { /* the indicator is optional */ } }
 const selectedId = ref<string | null>(null);
 const connected = ref(false);
 const now = ref(Date.now());
@@ -87,6 +98,7 @@ function upsert<T extends { id: string | number }>(list: T[], item: T) {
 async function refresh() {
   try { [sessions.value, watches.value] = await Promise.all([api.sessions(), api.watches()]); loaded.value = true; }
   catch (err) { toast((err as Error).message, true); }
+  void loadSweep();
   autoSeen();
 }
 
@@ -145,6 +157,7 @@ function openFromHash() {
 }
 
 let clock: ReturnType<typeof setInterval>;
+let sweepTimer: ReturnType<typeof setInterval>;
 onMounted(async () => {
   openFromHash();
   window.addEventListener("hashchange", openFromHash);
@@ -167,9 +180,10 @@ onMounted(async () => {
     refresh,
     (up) => (connected.value = up),
   );
-  clock = setInterval(() => (now.value = Date.now()), 15_000);
+  clock = setInterval(() => { now.value = Date.now(); }, 15_000);
+  sweepTimer = setInterval(loadSweep, 60_000);
 });
-onUnmounted(() => { closeRowMenu(); clearInterval(clock); window.removeEventListener("hashchange", openFromHash); document.removeEventListener("visibilitychange", autoSeen); });
+onUnmounted(() => { closeRowMenu(); clearInterval(clock); clearInterval(sweepTimer); window.removeEventListener("hashchange", openFromHash); document.removeEventListener("visibilitychange", autoSeen); });
 </script>
 
 <template>
@@ -180,6 +194,7 @@ onUnmounted(() => { closeRowMenu(); clearInterval(clock); window.removeEventList
         <span class="count" :class="{ hot: newCount > 0, calm: newCount === 0 && attentionCount > 0 }">{{
           attentionCount ? `${attentionCount} need you${newCount && newCount < attentionCount ? ` · ${newCount} new` : ""}` : "Nothing needs you" }}</span>
         <button v-if="newCount > 0" class="ghost" @click="markAllSeen">✓ Mark all seen</button>
+        <span v-if="sweepText" class="conn sweep" :class="{ up: !sweepError }" :title="sweepError ?? 'Teams PR sweep'">{{ sweepText }}</span>
         <span class="conn" :class="{ up: connected }">{{ connected ? "Live" : "Reconnecting…" }}</span>
       </header>
 

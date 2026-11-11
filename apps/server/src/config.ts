@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, isAbsolute, resolve } from "node:path";
 import { parse } from "yaml";
 import type { NotificationsConfig } from "./notifier";
+import { parseTeamsUrl } from "./teamsUrl";
 
 export interface StatusStyle { label: string; color: string; attention: boolean }
 
@@ -15,6 +16,21 @@ export interface ActionConfig {
   permission_mode?: string | null;
   allowed_tools?: string[] | null;
   cwd?: string;
+  /** Model for sessions this action starts (`--model`). Empty = the CLI default. */
+  model?: string | null;
+}
+
+export interface TeamsSweepConfig {
+  enabled: boolean;
+  interval_seconds: number;
+  /** days use ISO numbering: 1 = Monday ... 7 = Sunday. */
+  active_hours: { days: number[]; start: string; end: string; time_zone: string };
+  /** Model of the scanner that only fetches Teams messages. Unrelated to the review model (an action's `model`). */
+  model: string;
+  action: string;
+  max_concurrent_reviews: number;
+  me: string;
+  sources: { name: string; url: string }[];
 }
 
 export interface ProviderConfig { enabled: boolean; token_env?: string; api_version?: string }
@@ -30,7 +46,14 @@ export interface Config {
   actions: ActionConfig[];
   ui: { inactive_after_minutes: number; status: Record<string, StatusStyle>; seen_color?: string };
   notifications: NotificationsConfig;
+  teams_sweep: TeamsSweepConfig;
 }
+
+const teamsSweepDefaults: TeamsSweepConfig = {
+  enabled: false, interval_seconds: 300,
+  active_hours: { days: [1, 2, 3, 4, 5], start: "07:00", end: "19:00", time_zone: "America/New_York" },
+  model: "haiku", action: "review_pr_teams", max_concurrent_reviews: 2, me: "", sources: [],
+};
 
 const notificationDefaults: NotificationsConfig = {
   enabled: true, states: [], scenario: "reminder", delay_seconds: 15, base_url: null, app_name: "Claude Dashboard",
@@ -58,6 +81,8 @@ export function loadConfig(path = process.env.CLAUDE_DASHBOARD_CONFIG ?? resolve
   cfg.notifications = deepMerge(notificationDefaults, cfg.notifications ?? {});
   if (!["reminder", "default"].includes(cfg.notifications.scenario)) throw new Error(`notifications.scenario must be "reminder" or "default"`);
 
+  cfg.teams_sweep = deepMerge(teamsSweepDefaults, cfg.teams_sweep ?? {});
+
   const base = dirname(path);
   const abs = (p: string) => (isAbsolute(p) ? p : resolve(base, p));
   cfg.server.database_path = abs(cfg.server.database_path);
@@ -71,6 +96,13 @@ export function loadConfig(path = process.env.CLAUDE_DASHBOARD_CONFIG ?? resolve
     if (a.kind === "session" && !a.prompt) throw new Error(`Action ${a.key} needs a prompt`);
     keys.add(a.key);
   }
+
+  const ts = cfg.teams_sweep;
+  for (const src of ts.sources) {
+    if (!src?.name || !src.url || !parseTeamsUrl(src.url)) throw new Error(`teams_sweep source is not a Teams chat or channel link: ${JSON.stringify(src?.name ?? src)}`);
+  }
+  const act = cfg.actions.find((a) => a.key === ts.action);
+  if (!act || act.kind !== "session" || act.accepts !== "pr") throw new Error(`teams_sweep.action "${ts.action}" must be a session action in actions: that accepts: pr`);
   return cfg;
 }
 

@@ -72,6 +72,7 @@ actions:
     accepts: pr             # pr | run | incident: the kind of URL expected
     name: "PR review: {title}"
     prompt: "Review the pull request at {url}. ..."
+    model:                  # empty = the CLI default; sonnet | opus | haiku | a model id
     permission_mode:        # empty = use the workspace's Claude settings
     allowed_tools: []       # e.g. ["Read", "Bash(gh pr:*)", "Bash(az repos:*)"]
 ```
@@ -91,6 +92,55 @@ PagerDuty incidents: `{subdomain}.pagerduty.com/incidents/{id}` (any trailing pa
 
 Sessions started by a button run headless (`claude -p`), so they cannot stop to ask for permission. Give the review
 action the tools it needs through `allowed_tools`; the session needs `gh` or `az` signed in to read a private PR.
+
+`model:` picks the model for sessions that action starts (`claude --model <value>`). It is only passed when set, and it
+wins over a `--model` in `claude.extra_args`. `review_pr` and `review_pr_teams` both have it, so PR reviews can use a
+different model from everything else. It is unrelated to `teams_sweep.model`, which is only the cheap scanner below.
+
+### Teams PR sweep
+
+The dashboard can watch Teams chats and channels for Azure DevOps pull request links and start a PR review session
+for each PR that still needs review. It is off by default (`teams_sweep.enabled: false` in `config.yaml`). Turn it on
+in `config.local.yaml`:
+
+```yaml
+teams_sweep:
+  enabled: true
+  me: you@example.com          # your Azure DevOps sign-in; PRs you already voted on are skipped
+  sources:
+    - { name: Dev Team, url: "https://teams.microsoft.com/l/chat/..." }
+    - { name: Platform, url: "https://teams.microsoft.com/l/channel/.../General?groupId=..." }
+```
+
+How it works:
+
+- Every `interval_seconds` (default 300), inside `active_hours` (default Mon-Fri 07:00-19:00 America/New_York, days
+  numbered 1 = Monday to 7 = Sunday), the server runs one headless `claude -p --model <teams_sweep.model>` that reads
+  the sources through the claude.ai Microsoft 365 connector. It only fetches raw messages. The server itself finds the
+  PR links (regex, then the Azure DevOps URL parser), so the model never decides what is a PR.
+- The first sweep per source only sets the starting point: no backfill. Message ids already handled are remembered,
+  so an edited message does not trigger a second review, and each PR is launched at most once.
+- A PR needs review when it is active, not a draft, nobody has approved it (vote 5 or more), and `me` has not voted.
+  Your own PRs count. The Azure DevOps token needs Code (read).
+- A PR that needs review starts the `teams_sweep.action` session (default `review_pr_teams`), at most
+  `max_concurrent_reviews` at a time; the rest wait for the next sweep. Sessions show up like any other and trigger the
+  normal toast when they wait for you.
+- The header shows "Teams sweep: <time> ..." (red when the last scan failed). `GET /api/sweep` has the detail,
+  including the decision for each PR (`launched`, `approved`, `closed`, `draft`, `voted`, `pending`).
+
+Rules worth knowing:
+
+- Review sessions never post comments or vote. The prompt says so; you post and vote yourself.
+- The scanner runs with `--settings '{"disableAllHooks":true}'`. Without that, the workspace SessionStart hook would
+  announce every scan to peer sessions and add a row to the dashboard.
+- Cost: about $0.03 per scan with Haiku, so roughly $4 per day at 5 minutes in business hours. Sources that have not
+  been seen yet are initialised without a scan.
+- v1 scans top-level channel messages only, not replies. A PR link that the preview cuts off in the middle of the
+  number is ignored. Links must be `dev.azure.com` or `*.visualstudio.com`.
+- Roll back by setting `teams_sweep.enabled: false` and restarting. The two tables it adds are harmless.
+
+Dry run: `bun run sweep:dry` (optionally `-- --hours 48`) runs one real scan over the last 24 hours and prints the PRs
+it found with the review decision for each. It launches nothing and writes no state. It does cost one scan.
 
 ### Status colors
 

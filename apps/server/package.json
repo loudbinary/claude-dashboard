@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "bun --watch src/index.ts",
     "start": "bun src/index.ts",
-    "test": "bun test"
+    "test": "bun test",
+    "sweep:dry": "bun src/sweepDry.ts"
   },
   "dependencies": {
     "yaml": "^2.5.0"
