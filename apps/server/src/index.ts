@@ -38,6 +38,11 @@ if (sweepEnabled) {
       const r = await startAction(actionDeps, sweepAction, url, vars);
       if (!r.ok) throw new Error(r.error);
       if (r.kind !== "session") throw new Error("teams_sweep.action must start a session");
+      if (cfg.teams_sweep.notify_started !== false) {
+        const title = providers.find((p) => p.key === "azure_devops")?.parse(url)?.title ?? url;
+        notify?.announceStart(r.session_id, `PR review started: ${title}`,
+          `Shared by ${vars.sender || "someone"} in ${vars.source}. You'll get another toast with the verdict when it finishes.`);
+      }
       return r.session_id;
     },
   });

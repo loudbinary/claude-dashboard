@@ -125,7 +125,8 @@ teams_sweep:
   model: haiku               # the scanner that only fetches messages; NOT the review model (set `model:` on the action)
   action: review_pr_teams
   max_concurrent_reviews: 2
-  me: ""                     # your Azure DevOps sign-in (uniqueName); PRs you already voted on are skipped
+  notify_started: true       # toast when a review starts; the finished toast (with the verdict) comes from notifications:
+  me: ""                  # your Azure DevOps sign-in (uniqueName); PRs you already voted on are skipped
   sources: []                # [{ name: "Dev Team", url: "<Teams chat or channel link>" }]
 
 # Windows toast when a session or watch needs you. Clicking it opens the dashboard on that session.

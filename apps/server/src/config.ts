@@ -29,6 +29,8 @@ export interface TeamsSweepConfig {
   model: string;
   action: string;
   max_concurrent_reviews: number;
+  /** Toast as soon as the sweep starts a review (the finished-review toast comes from notifications). Default true. */
+  notify_started?: boolean;
   me: string;
   sources: { name: string; url: string }[];
 }

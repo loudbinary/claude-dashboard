@@ -80,6 +80,26 @@ describe("notifier", () => {
     expect(shown).toHaveLength(2);
   });
 
+  test("a started review toasts at once, then the verdict toast replaces it", async () => {
+    const { notify, shown, removed } = setup();
+    notify.announceStart("abc", "PR review started: IntelliGRC !12", "Shared by Joe in Dev Team.");
+    expect(shown[0]).toMatchObject({ tag: "start:abc", title: "PR review started: IntelliGRC !12", url: "http://dash/#session=abc" });
+    notify({ type: "session", data: session("working", { name: "PR review: IntelliGRC !12" }) });
+    expect(removed).toEqual([]); // still running: the started toast stays
+    notify({ type: "session", data: session("waiting_reply", { name: "PR review: IntelliGRC !12", last_message: "Summary... Verdict: needs changes\n1. foo.ts:3 ..." }) });
+    await tick();
+    expect(removed).toEqual(["start:abc"]);
+    expect(shown[1]).toMatchObject({ tag: "s:abc", title: "Review done (needs changes): PR review: IntelliGRC !12" });
+    expect(shown[1]!.body.startsWith("Verdict: needs changes.")).toBe(true);
+  });
+
+  test("removing a session withdraws its started toast", () => {
+    const { notify, removed } = setup();
+    notify.announceStart("abc", "PR review started: x", "y");
+    notify({ type: "session_deleted", data: { id: "abc" } });
+    expect(removed).toContain("start:abc");
+  });
+
   test("marking an item seen before its delay ends means it never toasts", async () => {
     const shown: Toast[] = [];
     const slow = createNotifier({ ...cfg, notifications: { ...cfg.notifications, delay_seconds: 0.05 } },

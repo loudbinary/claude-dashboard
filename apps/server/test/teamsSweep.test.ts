@@ -81,7 +81,8 @@ describe("needsReview", () => {
 });
 
 describe("active hours", () => {
-  const h = base.teams_sweep.active_hours;
+  // Fixed here, not read from config: config.local.yaml overrides would change the expected answers.
+  const h = { days: [1, 2, 3, 4, 5], start: "07:00", end: "19:00", time_zone: "America/New_York" };
   test("weekday business hours in Eastern time", () => {
     expect(inActiveHours(new Date(WED_10AM_ET), h)).toBe(true);
     expect(inActiveHours(new Date("2026-11-11T11:30:00Z"), h)).toBe(false); // 06:30 ET

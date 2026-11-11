@@ -49,12 +49,19 @@ export function createNotifier(cfg: Config, backend: ToastBackend, seed: { sessi
   for (const s of seed.sessions) last.set(`s:${s.id}`, s.state);
   for (const w of seed.watches) last.set(`w:${w.id}`, w.state);
 
-  const fromSession = (s: Session): Item => ({
-    key: `s:${s.id}`, state: s.state, seen: !!s.seen,
-    title: `${label(s.state)}: ${clip(s.name ?? s.default_name, 60)}`,
-    body: clip((s.last_message ?? "").replace(/\s+/g, " ").trim() || (s.cwd ?? ""), 180),
-    url: `${base}/#session=${encodeURIComponent(s.id)}`,
-  });
+  const sessionUrl = (id: string) => `${base}/#session=${encodeURIComponent(id)}`;
+  const fromSession = (s: Session): Item => {
+    const name = clip(s.name ?? s.default_name, 60);
+    const text = (s.last_message ?? "").replace(/\s+/g, " ").trim();
+    // A PR review ends with "Verdict: clean" or "Verdict: needs changes": lead with it.
+    const verdict = s.state === "waiting_reply" ? text.match(/Verdict:\s*(clean|needs changes)/i)?.[1]?.toLowerCase() : undefined;
+    return {
+      key: `s:${s.id}`, state: s.state, seen: !!s.seen,
+      title: verdict ? `Review done (${verdict}): ${name}` : `${label(s.state)}: ${name}`,
+      body: clip(verdict ? `Verdict: ${verdict}. ${text}` : text || (s.cwd ?? ""), 180),
+      url: sessionUrl(s.id),
+    };
+  };
   const fromWatch = (w: Watch): Item => ({
     key: `w:${w.id}`, state: w.state, seen: !!w.seen,
     title: `${label(w.state)}: ${clip(w.title, 60)}`, body: w.url, url: `${base}/`,
@@ -77,16 +84,29 @@ export function createNotifier(cfg: Config, backend: ToastBackend, seed: { sessi
       timers.delete(item.key);
       if (last.get(item.key) !== item.state) return;
       shown.add(item.key);
+      // The "started" toast for this session (if any) is replaced by this one.
+      if (item.key.startsWith("s:")) clearStarted(item.key.slice(2));
       backend.show({ tag: item.key, title: item.title, body: item.body, url: item.url });
     }, Math.max(0, n.delay_seconds) * 1000));
   }
 
-  return function onBroadcast(msg: Msg) {
+  const started = new Set<string>(); // session ids with a "started" toast on screen
+  function clearStarted(id: string) { if (started.delete(id)) backend.remove(`start:${id}`); }
+
+  function onBroadcast(msg: Msg) {
     if (msg.type === "session") observe(fromSession(msg.data as Session));
     else if (msg.type === "watch") observe(fromWatch(msg.data as Watch));
-    else if (msg.type === "session_deleted") { const k = `s:${(msg.data as { id: string }).id}`; cancel(k); last.delete(k); }
+    else if (msg.type === "session_deleted") { const id = (msg.data as { id: string }).id; const k = `s:${id}`; cancel(k); last.delete(k); clearStarted(id); }
     else if (msg.type === "watch_deleted") { const k = `w:${(msg.data as { id: number }).id}`; cancel(k); last.delete(k); }
-  };
+  }
+
+  /** Immediate "a session just started" toast (no delay); withdrawn when the session's own toast shows. */
+  function announceStart(sessionId: string, title: string, body: string) {
+    started.add(sessionId);
+    backend.show({ tag: `start:${sessionId}`, title: clip(title, 80), body: clip(body, 180), url: sessionUrl(sessionId) });
+  }
+
+  return Object.assign(onBroadcast, { announceStart });
 }
 
 const xml = (s: string) => s.replace(/[<>&"']/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;", "'": "&apos;" })[c]!);
