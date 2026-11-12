@@ -7,7 +7,7 @@ import { launch as realLaunch, stopSession as realStop, type LaunchOptions } fro
 import { resolveUrl } from "./providers";
 import type { Provider } from "./providers/types";
 import { normalizeHook } from "./state";
-import { readNotes, type Note } from "./transcript";
+import { isClearCommand, readNotes, type Note } from "./transcript";
 
 export type Broadcast = (msg: { type: "session" | "session_deleted" | "watch" | "watch_deleted"; data: unknown }) => void;
 
@@ -198,6 +198,8 @@ export function createApp(deps: AppDeps) {
       if (!e) return fail(400, "Expected hook JSON with hook_event_name and session_id");
       // Removed from the dashboard: stays removed, whatever the session does next.
       if (store.isRemoved(e.session_id)) return json({ ignored: true });
+      // `/clear` is noise: don't record it as a prompt or let it name the session.
+      if (e.hook_event_name === "UserPromptSubmit" && typeof e.prompt === "string" && isClearCommand(e.prompt)) return json({ ignored: true });
       onSession(store.applyHook(e));
       return json({});
     }
@@ -313,7 +315,7 @@ export function createApp(deps: AppDeps) {
           notes = events.flatMap((e): Note[] => {
             const p = JSON.parse(e.payload);
             const ts = new Date(e.ts).toISOString();
-            if (e.type === "UserPromptSubmit" && p.prompt) return [{ role: "user", text: p.prompt, ts }];
+            if (e.type === "UserPromptSubmit" && p.prompt && !isClearCommand(p.prompt)) return [{ role: "user", text: p.prompt, ts }];
             if (e.type === "AssistantMessage" && p.text) return [{ role: "assistant", text: p.text, ts }];
             return [];
           });

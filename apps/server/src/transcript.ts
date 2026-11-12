@@ -11,6 +11,12 @@ function textOf(content: unknown): string {
     .join("\n");
 }
 
+/** `/clear` leaves a command row in the new session's transcript; it is noise in the dashboard. */
+export function isClearCommand(text: string): boolean {
+  const t = text.trim();
+  return t === "/clear" || /^<command-name>\/clear<\/command-name>/.test(t);
+}
+
 /** Reads a Claude Code transcript (JSONL) and returns the user and assistant text turns. */
 export function readNotes(path: string | null, limit = 200): Note[] {
   if (!path || !existsSync(path)) return [];
@@ -22,7 +28,7 @@ export function readNotes(path: string | null, limit = 200): Note[] {
       if (row.type !== "user" && row.type !== "assistant") continue;
       if (row.isMeta) continue;
       const text = textOf(row.message?.content).trim();
-      if (text) notes.push({ role: row.type, text, ts: row.timestamp ?? null });
+      if (text && !isClearCommand(text)) notes.push({ role: row.type, text, ts: row.timestamp ?? null });
     } catch {
       // Skip partial or malformed lines; the file may be mid-write.
     }
