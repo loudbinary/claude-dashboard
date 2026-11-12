@@ -370,3 +370,12 @@ test("launcher builds CLI arguments", () => {
   expect(buildArgs(cfg, { prompt: "hi", resume: "abc", permission_mode: "plan", allowed_tools: ["Read", "Bash(gh:*)"] }))
     .toEqual(["claude", "-p", "hi", "--output-format", "stream-json", "--verbose", "--resume", "abc", "--permission-mode", "plan", "--allowedTools", "Read,Bash(gh:*)"]);
 });
+
+test("claude.permission_mode applies to launches without their own mode; an explicit mode wins", () => {
+  const withMode = { ...cfg, claude: { ...cfg.claude, permission_mode: "auto" } };
+  const a = buildArgs(withMode, { prompt: "hi" });
+  expect(a[a.indexOf("--permission-mode") + 1]).toBe("auto");
+  const b = buildArgs(withMode, { prompt: "hi", permission_mode: "plan" });
+  expect(b.filter((x) => x === "--permission-mode")).toHaveLength(1);
+  expect(b[b.indexOf("--permission-mode") + 1]).toBe("plan");
+});

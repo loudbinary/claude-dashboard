@@ -43,6 +43,8 @@ export interface Config {
   server: { host: string; port: number; database_path: string };
   claude: {
     command: string; default_cwd: string; extra_args: string[];
+    /** Permission mode for every dashboard launch that does not set its own (e.g. "auto"). Empty = workspace settings. */
+    permission_mode?: string | null;
     new_session?: { permission_mode?: string | null; allowed_tools?: string[] | null } | null;
   };
   providers: { azure_devops: ProviderConfig; github: ProviderConfig; pagerduty?: ProviderConfig };

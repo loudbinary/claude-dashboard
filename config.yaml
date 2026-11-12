@@ -15,6 +15,11 @@ claude:
   # "." means the dashboard's own folder, which has none of that.
   default_cwd: .
   extra_args: []             # appended to every launch, e.g. ["--model", "sonnet"]
+  # Permission mode for every session the dashboard starts (buttons, Teams sweep reviews, New
+  # session, resume) unless the action or new_session sets its own. Sessions run headless (-p), so
+  # a tool that would prompt is denied instead. Set "auto" to match a terminal session in auto mode.
+  # Empty = the workspace settings' defaultMode. Does not apply to the Teams sweep scanner.
+  permission_mode:
   # Sessions started with the "New session" button. They run headless, so they cannot stop to
   # ask for permission: anything not allowed here is denied rather than prompted.
   new_session:

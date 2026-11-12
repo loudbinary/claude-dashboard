@@ -48,7 +48,10 @@ export function buildArgs(cfg: Config, o: LaunchOptions): string[] {
   const args = [cfg.claude.command, "-p", o.prompt, "--output-format", "stream-json", "--verbose"];
   if (o.resume) args.push("--resume", o.resume);
   else if (o.name) args.push("--name", o.name);
-  if (o.permission_mode) args.push("--permission-mode", o.permission_mode);
+  // Headless runs have no one to approve a prompt, so anything not already allowed is denied.
+  // claude.permission_mode (e.g. "auto") gives them the mode an interactive session would run in.
+  const mode = o.permission_mode || cfg.claude.permission_mode;
+  if (mode) args.push("--permission-mode", mode);
   if (o.allowed_tools?.length) args.push("--allowedTools", o.allowed_tools.join(","));
   let extra = cfg.claude.extra_args ?? [];
   if (o.model) {
