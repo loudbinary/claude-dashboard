@@ -68,6 +68,7 @@ export async function startAction(deps: ActionDeps, action: ActionConfig, url: s
       name: action.name ? fill(action.name, vars) : undefined,
       cwd: action.cwd, permission_mode: action.permission_mode, allowed_tools: action.allowed_tools,
       model: action.model || undefined,
+      quiet: !action.announce,
     }, (s) => broadcast({ type: "session", data: s }));
     // Remember which PR this review is about, so its drafts can be posted back to it later.
     if (hit.ref.kind === "pr") deps.store?.linkSessionPr(id, url);

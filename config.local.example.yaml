@@ -61,6 +61,7 @@
 #   allowed_tools: []
 #   cwd:                            folder for this action's sessions; empty = claude.default_cwd
 #   hidden: false                   true = no button (still startable by key, e.g. by teams_sweep)
+#   announce: false                 true = sessions announce to peers (for actions that edit files or move branches)
 # actions:
 #   - key: review_pr
 #     label: Review PR

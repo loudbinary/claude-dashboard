@@ -20,6 +20,12 @@ export interface ActionConfig {
   model?: string | null;
   /** Left out of the button list (GET /api/config); still usable by key, e.g. by the Teams sweep. */
   hidden?: boolean;
+  /**
+   * Let sessions this action starts announce themselves to peer sessions (workspace SessionStart hook).
+   * Default false: actions are read-only investigations, so they launch with CLAUDE_DASHBOARD_QUIET=1.
+   * Set true for an action that edits files or moves branches.
+   */
+  announce?: boolean;
 }
 
 export interface TeamsSweepConfig {

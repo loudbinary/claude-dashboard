@@ -13,6 +13,16 @@ export interface LaunchOptions {
   allowed_tools?: string[] | null;
   /** Model for this run (`--model`). Empty means: the CLI default. Wins over a --model in claude.extra_args. */
   model?: string | null;
+  /**
+   * Read-only run: sets CLAUDE_DASHBOARD_QUIET=1 in the session's environment, so a workspace
+   * SessionStart hook can skip announcing it to peer sessions (see README, "Peer announcements").
+   */
+  quiet?: boolean;
+}
+
+/** Environment for a launched session: the server's own, plus the quiet flag when asked. */
+export function buildEnv(o: Pick<LaunchOptions, "quiet">, base: Record<string, string | undefined> = process.env) {
+  return o.quiet ? { ...base, CLAUDE_DASHBOARD_QUIET: "1" } : { ...base };
 }
 
 /** Claude processes the dashboard started, by session id, while they run. */
@@ -126,7 +136,7 @@ export function launch(cfg: Config, store: Store, o: LaunchOptions, onChange: (s
   return new Promise((resolveId, reject) => {
     let proc: ReturnType<typeof Bun.spawn>;
     try {
-      proc = Bun.spawn(buildArgs(cfg, o), { cwd: o.cwd ?? cfg.claude.default_cwd, stdout: "pipe", stderr: "pipe", stdin: "ignore" });
+      proc = Bun.spawn(buildArgs(cfg, o), { cwd: o.cwd ?? cfg.claude.default_cwd, env: buildEnv(o), stdout: "pipe", stderr: "pipe", stdin: "ignore" });
     } catch (err) {
       return reject(new Error(`Could not start "${cfg.claude.command}": ${(err as Error).message}`));
     }

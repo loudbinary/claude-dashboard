@@ -163,6 +163,11 @@ Rules worth knowing:
 - Review sessions never post comments or vote. The prompt says so; you post and vote yourself.
 - The scanner runs with `--settings '{"disableAllHooks":true}'`. Without that, the workspace SessionStart hook would
   announce every scan to peer sessions and add a row to the dashboard.
+- Peer announcements: sessions started by an action (Review PR, the Teams sweep's reviews, Investigate pipeline,
+  Analyze PagerDuty Incident) launch with `CLAUDE_DASHBOARD_QUIET=1` in their environment. A workspace SessionStart
+  hook can test it and skip messaging peer sessions, for example
+  `[ "$CLAUDE_DASHBOARD_QUIET" = "1" ] && exit 0`. New session, resume and reply launch without it, so they still
+  announce. Set `announce: true` on an action that edits files or moves branches.
 - Cost: about $0.03 per scan with Haiku, so roughly $4 per day at 5 minutes in business hours. Sources that have not
   been seen yet are initialised without a scan.
 - v1 scans top-level channel messages only, not replies. A PR link that the preview cuts off in the middle of the

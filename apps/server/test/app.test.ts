@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import { allowedOrigin, createApp } from "../src/app";
 import { deepMerge, loadConfig, normalizeOrigins } from "../src/config";
 import { Store } from "../src/db";
-import { buildArgs, makeStreamHandler } from "../src/launcher";
+import { buildArgs, buildEnv, makeStreamHandler } from "../src/launcher";
 import { azureDevOps, pendingApprovalStages } from "../src/providers/azureDevOps";
 import { github } from "../src/providers/github";
 import { pagerduty } from "../src/providers/pagerduty";
@@ -166,6 +166,8 @@ describe("app", () => {
     expect(res.status).toBe(201);
     expect(launched[0].prompt).toContain("https://dev.azure.com/org/proj/_git/repo/pullrequest/15");
     expect(launched[0].name).toBe("PR review: repo !15");
+    // Actions are read-only: they launch quiet unless the action sets announce: true.
+    expect(launched[0].quiet).toBe(true);
   });
 
   test("analyze_pagerduty prefetches the incident into the prompt", async () => {
@@ -249,6 +251,8 @@ describe("app", () => {
     // No permission override by default: the workspace's own Claude settings decide.
     expect(launched[0].permission_mode ?? null).toBeNull();
     expect(buildArgs(cfg, launched[0])).not.toContain("--permission-mode");
+    // A new session may edit files or move branches, so it keeps announcing itself to peers.
+    expect(launched[0].quiet ?? false).toBe(false);
     expect((await handle(post("/api/sessions", { prompt: "x", cwd: "/no/such/folder" }))).status).toBe(400);
     expect((await handle(post("/api/sessions", { prompt: "  " }))).status).toBe(400);
   });
@@ -405,6 +409,13 @@ describe("seen", () => {
 test("launcher builds CLI arguments", () => {
   expect(buildArgs(cfg, { prompt: "hi", resume: "abc", permission_mode: "plan", allowed_tools: ["Read", "Bash(gh:*)"] }))
     .toEqual(["claude", "-p", "hi", "--output-format", "stream-json", "--verbose", "--resume", "abc", "--permission-mode", "plan", "--allowedTools", "Read,Bash(gh:*)"]);
+});
+
+test("quiet launches add CLAUDE_DASHBOARD_QUIET=1 and keep the rest of the environment", () => {
+  const base = { PATH: "/bin", AZDO_DASHBOARD_PAT: "x" };
+  expect(buildEnv({ quiet: true }, base)).toEqual({ ...base, CLAUDE_DASHBOARD_QUIET: "1" });
+  expect(buildEnv({}, base)).toEqual(base);
+  expect(buildEnv({}, base)).not.toBe(base);
 });
 
 test("claude.permission_mode applies to launches without their own mode; an explicit mode wins", () => {
