@@ -18,6 +18,55 @@ const sending = ref(false);
 const panel = ref<HTMLElement | null>(null);
 
 /**
+ * Panel height, set by dragging the handle under it. Stored as a fraction of the viewport height and
+ * applied in dvh, so it rescales on its own when the window is resized or a tablet flips orientation.
+ * null = the default (content height, capped at 70% of the viewport). Shared by every session's panel.
+ */
+const HEIGHT_KEY = "claude-dashboard.detailHeight";
+const MIN_FRAC = 0.2, MAX_FRAC = 0.92, STEP = 0.05;
+const clampFrac = (f: number) => Math.min(MAX_FRAC, Math.max(MIN_FRAC, f));
+function readFrac(): number | null {
+  try { const f = Number(localStorage.getItem(HEIGHT_KEY)); return f > 0 ? clampFrac(f) : null; } catch { return null; }
+}
+const heightFrac = ref<number | null>(readFrac());
+function saveFrac() {
+  try { if (heightFrac.value === null) localStorage.removeItem(HEIGHT_KEY); else localStorage.setItem(HEIGHT_KEY, heightFrac.value.toFixed(3)); } catch { /* private window: size just isn't remembered */ }
+}
+const panelStyle = computed(() => heightFrac.value === null ? undefined
+  : { height: `${(heightFrac.value * 100).toFixed(1)}dvh`, maxHeight: "none" });
+
+let drag: { startY: number; startH: number } | null = null;
+const resizing = ref(false);
+function startResize(ev: PointerEvent) {
+  if (ev.button !== 0 || !panel.value) return;
+  ev.preventDefault();
+  (ev.currentTarget as HTMLElement).setPointerCapture(ev.pointerId);
+  drag = { startY: ev.clientY, startH: panel.value.getBoundingClientRect().height };
+  resizing.value = true;
+}
+function onResize(ev: PointerEvent) {
+  if (!drag) return;
+  heightFrac.value = clampFrac((drag.startH + ev.clientY - drag.startY) / window.innerHeight);
+}
+function endResize() {
+  if (!drag) return;
+  drag = null; resizing.value = false; saveFrac();
+}
+function resetSize() { heightFrac.value = null; saveFrac(); }
+function resizeKey(ev: KeyboardEvent) {
+  const cur = heightFrac.value ?? (panel.value ? panel.value.getBoundingClientRect().height / window.innerHeight : 0.7);
+  if (ev.key === "ArrowUp") heightFrac.value = clampFrac(cur - STEP);
+  else if (ev.key === "ArrowDown") heightFrac.value = clampFrac(cur + STEP);
+  else if (ev.key === "Home" || ev.key === "Escape") heightFrac.value = null;
+  else return;
+  ev.preventDefault(); saveFrac();
+}
+// Another tab resized its panel: follow it.
+const onStorage = (ev: StorageEvent) => { if (ev.key === HEIGHT_KEY) heightFrac.value = readFrac(); };
+onMounted(() => window.addEventListener("storage", onStorage));
+onBeforeUnmount(() => window.removeEventListener("storage", onStorage));
+
+/**
  * Opening a session jumps to the bottom, where the latest exchange and the reply box are.
  * Live updates keep following the bottom only if you are already there, so reading older notes is not interrupted.
  */
@@ -107,7 +156,8 @@ async function remove() {
 </script>
 
 <template>
-  <div ref="panel" class="detail" @contextmenu="onContextMenu">
+  <div class="detail-wrap" :class="{ resizing }">
+  <div ref="panel" class="detail" :style="panelStyle" @contextmenu="onContextMenu">
     <div v-if="menu" class="ctx-menu" role="menu" :style="{ left: menu.x + 'px', top: menu.y + 'px' }" @pointerdown.stop>
       <button role="menuitem" @click="popOutSelection">Pop out selection</button>
       <button role="menuitem" @click="copySelection">Copy</button>
@@ -158,5 +208,11 @@ async function remove() {
       <p v-else class="muted">This session runs in a terminal, so reply there. Sessions started from the dashboard can be answered here.</p>
       <button class="ghost danger" @click="remove">Remove from dashboard</button>
     </footer>
+  </div>
+  <div class="detail-resize" role="separator" aria-orientation="horizontal" aria-label="Resize session details"
+       :aria-valuenow="heightFrac === null ? undefined : Math.round(heightFrac * 100)" aria-valuemin="20" aria-valuemax="92"
+       tabindex="0" title="Drag to resize. Double-click to reset."
+       @pointerdown="startResize" @pointermove="onResize" @pointerup="endResize" @pointercancel="endResize"
+       @lostpointercapture="endResize" @dblclick="resetSize" @keydown="resizeKey"><span aria-hidden="true"></span></div>
   </div>
 </template>

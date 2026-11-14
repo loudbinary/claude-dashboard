@@ -60,7 +60,14 @@ input:focus, textarea:focus, button:focus-visible { outline: 2px solid var(--acc
 @media (prefers-reduced-motion: reduce) { .chip.pulse { animation: none; } }
 
 /* Session details expand inline, in a full-width row under the session they belong to. */
-.detail { padding: 16px 18px; display: flex; flex-direction: column; gap: 16px; max-height: 70vh; overflow-y: auto; scroll-margin: 12px; }
+.detail { padding: 16px 18px; display: flex; flex-direction: column; gap: 16px; max-height: 70vh; max-height: 70dvh; min-height: 160px; overflow-y: auto; scroll-margin: 12px; }
+/* Drag handle under the details: resizes the panel height (stored as a share of the viewport, see SessionDetail.vue). */
+.detail-resize { height: 12px; cursor: ns-resize; touch-action: none; display: flex; align-items: center; justify-content: center; border-top: 1px solid var(--line); border-radius: 0 0 6px 6px; }
+.detail-resize span { width: 44px; height: 4px; border-radius: 2px; background: var(--line); transition: background .15s; }
+.detail-resize:hover span, .detail-resize:focus-visible span, .detail-wrap.resizing .detail-resize span { background: var(--accent); }
+.detail-resize:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.detail-wrap.resizing { user-select: none; cursor: ns-resize; }
+@media (pointer: coarse) { .detail-resize { height: 22px; } .detail-resize span { width: 56px; height: 5px; } }
 .grid tr.detail-row { cursor: default; }
 .grid tr.detail-row td { padding: 0; background: var(--panel); border: 1px solid var(--accent); border-left: 4px solid var(--row); border-top: 0; border-radius: 0 0 6px 6px; vertical-align: top; }
 .grid tr.selected td { border-bottom-color: transparent; }

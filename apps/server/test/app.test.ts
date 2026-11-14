@@ -287,6 +287,19 @@ describe("app", () => {
     expect(allowedOrigin(o("http://dash.example:8443"), extra)).toBe(false);
     expect(allowedOrigin(o("http://devbox.evil.example"), extra)).toBe(false);
     expect(allowedOrigin(o("http://devbox:9999"))).toBe(false);
+    const corsCfg = { ...cfg, server: { ...cfg.server, allowed_origins: ["http://lan:4000"] } };
+    const ch = createApp({ cfg: corsCfg, store: new Store(":memory:"), providers: [], clientDir: "/nonexistent", broadcast: () => {} });
+    const pre = (origin: string) => ch(new Request("http://127.0.0.1/api/actions/review_pr", { method: "OPTIONS",
+      headers: { origin, "access-control-request-method": "POST", "access-control-request-headers": "content-type" } }));
+    const ok = await pre("http://lan:4000");
+    expect(ok.status).toBe(204);
+    expect(ok.headers.get("access-control-allow-origin")).toBe("http://lan:4000");
+    expect(ok.headers.get("access-control-allow-headers")).toBe("content-type");
+    expect((await pre("https://evil.example")).status).toBe(403);
+    const got = await ch(new Request("http://127.0.0.1/api/config", { headers: { origin: "http://lan:4000" } }));
+    expect(got.headers.get("access-control-allow-origin")).toBe("http://lan:4000");
+    expect((await ch(new Request("http://127.0.0.1/api/config", { headers: { origin: "https://evil.example" } }))).headers.get("access-control-allow-origin")).toBeNull();
+    expect((await handle(new Request("http://127.0.0.1/api/config", { headers: { origin: "http://localhost:5173" } }))).headers.get("access-control-allow-origin")).toBeNull();
     const plain = new Request("http://127.0.0.1/api/actions/review_pr", { method: "POST", headers: { "content-type": "text/plain" }, body: '{"url":"https://github.com/o/r/pull/1"}' });
     expect((await handle(plain)).status).toBe(400);
   });

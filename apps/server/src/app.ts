@@ -92,7 +92,11 @@ export function allowedOrigin(req: Request, extra: readonly string[] = []): bool
   if (!origin) return true; // Claude Code hooks, curl, same-origin GETs
   let u: URL;
   try { u = new URL(origin); } catch { return false; }
-  if (["127.0.0.1", "localhost", "[::1]"].includes(u.hostname)) return true;
+  return ["127.0.0.1", "localhost", "[::1]"].includes(u.hostname) || listedOrigin(u, extra);
+}
+
+/** Whether an origin is named in server.allowed_origins (loopback is not implied). */
+function listedOrigin(u: URL, extra: readonly string[]): boolean {
   const port = u.port || (u.protocol === "https:" ? "443" : "80");
   return extra.some((e) => e.includes("://") ? e.replace(/\/$/, "") === u.origin
     : e === u.hostname || e === `${u.hostname}:${port}`);
@@ -195,7 +199,38 @@ export function createApp(deps: AppDeps) {
     return json({ posted, failed, skipped, summary: summaryResult, drafts: store.listDrafts(id), summary_thread_id: store.getPrSession(id)?.summary_thread_id ?? null });
   }
 
+  const extraOrigins = cfg.server.allowed_origins ?? [];
+  /**
+   * CORS for the origins in server.allowed_origins (never for loopback, which is served same-origin):
+   * answers preflights and adds Access-Control-Allow-Origin so a page on that origin can read the reply.
+   * No credentials: the dashboard has no cookies or auth to share.
+   */
+  const corsOrigin = (req: Request): string | null => {
+    const origin = req.headers.get("origin");
+    if (!origin || !extraOrigins.length) return null;
+    try { return listedOrigin(new URL(origin), extraOrigins) ? origin : null; } catch { return null; }
+  };
   return async function handle(req: Request): Promise<Response> {
+    const origin = corsOrigin(req);
+    if (req.method === "OPTIONS" && req.headers.get("access-control-request-method")) {
+      if (!origin) return new Response(null, { status: 403, headers: { Vary: "Origin" } });
+      return new Response(null, { status: 204, headers: {
+        "Access-Control-Allow-Origin": origin,
+        "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
+        "Access-Control-Allow-Headers": req.headers.get("access-control-request-headers") ?? "content-type",
+        "Access-Control-Max-Age": "600",
+        Vary: "Origin",
+      } });
+    }
+    const res = await route(req);
+    if (!origin) return res;
+    const out = new Response(res.body, res); // copy: a response's headers can be immutable
+    out.headers.set("Access-Control-Allow-Origin", origin);
+    out.headers.append("Vary", "Origin");
+    return out;
+  };
+
+  async function route(req: Request): Promise<Response> {
     const url = new URL(req.url);
     const path = url.pathname;
     const m = req.method;
@@ -396,5 +431,5 @@ export function createApp(deps: AppDeps) {
       }
     }
     return fail(404, "Not found");
-  };
+  }
 }
