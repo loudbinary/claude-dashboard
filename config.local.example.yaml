@@ -1,14 +1,109 @@
-# Copy to config.local.yaml and edit for this machine. Only include keys you want to change.
+# Copy to config.local.yaml (git-ignored) and uncomment only the keys you want to change for this machine.
+# Every available override is listed below with its shipped default from config.yaml.
+#
+# Merge rules: config.local.yaml is deep-merged over config.yaml.
+#   - Maps merge key by key (e.g. ui.status.failed.color alone is fine).
+#   - Lists and scalars REPLACE the shipped value. Overriding `actions:` replaces every button, so copy
+#     the whole list from config.yaml if you change one action. Same for allowed_origins, sources, etc.
+#
+# Environment variables (win over the files):
+#   CLAUDE_DASHBOARD_CONFIG  path to the config file to load (its .local.yaml sibling is merged over it)
+#   CLAUDE_DASHBOARD_PORT    overrides server.port (start-claude-dashboard.ps1 reads it too)
+#   CLAUDE_DASHBOARD_CWD     overrides claude.default_cwd
+# Tokens never go in these files: each provider names the environment variable that holds its token.
 
-server:
-  port: 4000
-  database_path: C:/Users/you/.claude-dashboard/dashboard.sqlite
-  # allowed_origins: ["devbox:4000", "http://192.168.1.20:4000"]   # replaces the list in config.yaml
+# server:
+#   host: 127.0.0.1                 # 0.0.0.0 to reach it from other machines (then set allowed_origins)
+#   port: 4000
+#   database_path: ./data/dashboard.sqlite   # relative paths resolve from the config file's folder
+#   # Extra origins whose pages may POST and get CORS headers. Loopback is always allowed.
+#   #   "devbox" (any port) | "devbox:4000" | "http://devbox:4000" (exact origin, scheme must match). "*" is refused.
+#   allowed_origins: []             # e.g. ["192.168.1.20:4000"]
+#   # Per-origin verb override: only these write verbs (POST | PUT | PATCH | DELETE) from that origin.
+#   # GET is always allowed. A plain string entry allows every write verb.
+#   # allowed_origins:
+#   #   - "devbox:4000"
+#   #   - { origin: "http://192.168.1.23:4000", methods: [POST, DELETE] }
 
-claude:
-  # Sessions start here and pick up this workspace's Claude settings, permissions and tools.
-  default_cwd: C:/path/to/your/workspace
+# claude:
+#   command: claude                 # CLI used to launch and resume sessions
+#   default_cwd: .                  # your workspace, e.g. C:/path/to/your/workspace, so sessions load its settings
+#   extra_args: []                  # appended to every launch, e.g. ["--model", "sonnet"]
+#   permission_mode:                # empty = workspace defaultMode | default | acceptEdits | plan | auto | bypassPermissions
+#   new_session:                    # the "New session" button
+#     permission_mode:              # empty = use claude.permission_mode / workspace settings
+#     allowed_tools: []             # e.g. ["Read", "Edit", "Bash(git:*)"]
 
-providers:
-  github:
-    enabled: false          # e.g. work machine that only uses Azure DevOps
+# providers:
+#   azure_devops:
+#     enabled: true
+#     token_env: AZDO_PAT           # name of the env var holding the PAT (Code read & write to post drafts)
+#     api_version: "7.1"
+#   github:
+#     enabled: true                 # false on a machine that only uses Azure DevOps
+#     token_env: GITHUB_TOKEN
+#   pagerduty:
+#     enabled: true
+#     token_env: PAGERDUTY_TOKEN    # REST API key or user token; read-only is enough
+
+# watch:
+#   poll_interval_seconds: 60       # how often watched pipeline runs are polled
+
+# Buttons. Replacing this list replaces ALL buttons; copy the full list from config.yaml first.
+# Per-action keys:
+#   key, label                      required; key must be unique
+#   kind: session | watch           session starts Claude with `prompt`; watch polls a pipeline run
+#   accepts: pr | run | incident    what URL the button expects (read from the clipboard)
+#   name: "PR review: {title}"      session name template
+#   prompt: |                       required for kind: session; placeholders {url} {title} {provider} {details}
+#   model:                          empty = CLI default | sonnet | opus | haiku | full model id
+#   permission_mode:                empty = claude.permission_mode
+#   allowed_tools: []
+#   cwd:                            folder for this action's sessions; empty = claude.default_cwd
+#   hidden: false                   true = no button (still startable by key, e.g. by teams_sweep)
+# actions:
+#   - key: review_pr
+#     label: Review PR
+#     kind: session
+#     accepts: pr
+#     ...
+
+# teams_sweep:
+#   enabled: false
+#   interval_seconds: 300
+#   active_hours: { days: [1, 2, 3, 4, 5], start: "07:00", end: "19:00", time_zone: America/New_York }  # 1 = Monday ... 7 = Sunday
+#   model: haiku                    # scanner that only fetches messages, NOT the review model
+#   action: review_pr_teams         # must be a session action with accepts: pr
+#   max_concurrent_reviews: 2
+#   notify_started: true            # toast when a review starts
+#   me: ""                          # your Azure DevOps uniqueName; PRs you already voted on are skipped
+#   sources: []                     # [{ name: "Dev Team", url: "<Teams chat or channel link>" }]
+
+# pr_comments:
+#   footer: "_Drafted with Claude, reviewed and posted by Charles._"   # "" disables
+
+# notifications:                    # Windows toasts; ignored on other platforms
+#   enabled: true
+#   states: []                      # empty = every ui.status entry with attention: true
+#   scenario: reminder              # reminder | urgent (breaks through Do Not Disturb) | default
+#   delay_seconds: 15               # skip the toast if you answer within this long
+#   base_url:                       # address the toast opens; empty = http://<server.host>:<server.port>
+#   app_name: Claude Dashboard
+
+# ui:
+#   inactive_after_minutes: 120     # a quiet "working" session shows as Inactive after this long
+#   seen_color: "#667085"
+#   status:                         # map: override one state without restating the others
+#     needs_permission: { label: Needs permission,       color: "#D92D20", attention: true }
+#     waiting_reply:    { label: Waiting for your reply, color: "#F79009", attention: true }
+#     approval_pending: { label: Awaiting approval,      color: "#7A5AF8", attention: true }
+#     failed:           { label: Failed,                 color: "#912018", attention: true }
+#     working:          { label: Working,                color: "#2E90FA", attention: false }
+#     watching:         { label: Watching,               color: "#2E90FA", attention: false }
+#     done:             { label: Done,                   color: "#12B76A", attention: false }
+#     succeeded:        { label: Succeeded,              color: "#12B76A", attention: false }
+#     canceled:         { label: Canceled,               color: "#98A2B3", attention: false }
+#     idle:             { label: Inactive,               color: "#98A2B3", attention: false }
+
+# Client-side (per browser, not config): the session-details height you drag is kept in localStorage
+# under "claude-dashboard.detailHeight". Double-click the handle to reset it.

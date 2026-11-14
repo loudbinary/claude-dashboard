@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join, normalize, resolve } from "node:path";
 import type { ActionConfig, Config } from "./config";
-import { repoRoot } from "./config";
+import { normalizeOrigins, repoRoot, WRITE_METHODS, type OriginRule } from "./config";
 import type { PrSession, Session, Store, Watch } from "./db";
 import { launch as realLaunch, stopSession as realStop, type LaunchOptions } from "./launcher";
 import { resolveUrl } from "./providers";
@@ -85,22 +85,29 @@ const fill = (tpl: string, vars: Record<string, string>) => tpl.replace(/\{(\w+)
 /**
  * Requests from a web page on another site are refused, so a stray page cannot start sessions.
  * Loopback is always allowed; `server.allowed_origins` adds more (e.g. when bound to 0.0.0.0):
- * "host" matches any port, "host:port" that port, "http(s)://host:port" that exact origin.
+ * "host" matches any port, "host:port" that port, "http(s)://host:port" that exact origin. A rule with
+ * `methods` only allows those write verbs from that origin.
  */
-export function allowedOrigin(req: Request, extra: readonly string[] = []): boolean {
+export function allowedOrigin(req: Request, extra: Parameters<typeof normalizeOrigins>[0] = []): boolean {
   const origin = req.headers.get("origin");
   if (!origin) return true; // Claude Code hooks, curl, same-origin GETs
   let u: URL;
   try { u = new URL(origin); } catch { return false; }
-  return ["127.0.0.1", "localhost", "[::1]"].includes(u.hostname) || listedOrigin(u, extra);
+  if (["127.0.0.1", "localhost", "[::1]"].includes(u.hostname)) return true;
+  const rule = listedOrigin(u, normalizeOrigins(extra));
+  return !!rule && permits(rule, req.method);
 }
 
-/** Whether an origin is named in server.allowed_origins (loopback is not implied). */
-function listedOrigin(u: URL, extra: readonly string[]): boolean {
+/** The server.allowed_origins rule naming this origin, if any (loopback is not implied). */
+function listedOrigin(u: URL, rules: readonly OriginRule[]): OriginRule | null {
   const port = u.port || (u.protocol === "https:" ? "443" : "80");
-  return extra.some((e) => e.includes("://") ? e.replace(/\/$/, "") === u.origin
-    : e === u.hostname || e === `${u.hostname}:${port}`);
+  return rules.find(({ match: e }) => e.includes("://") ? e === u.origin
+    : e === u.hostname || e === `${u.hostname}:${port}`) ?? null;
 }
+
+/** Reads are always allowed; writes only if the rule grants that verb (no `methods` = all of them). */
+const permits = (rule: OriginRule, method: string) =>
+  ["GET", "HEAD", "OPTIONS"].includes(method.toUpperCase()) || !rule.methods || rule.methods.includes(method.toUpperCase());
 
 async function body(req: Request): Promise<any | null> {
   if (!(req.headers.get("content-type") ?? "").includes("application/json")) return null;
@@ -199,24 +206,26 @@ export function createApp(deps: AppDeps) {
     return json({ posted, failed, skipped, summary: summaryResult, drafts: store.listDrafts(id), summary_thread_id: store.getPrSession(id)?.summary_thread_id ?? null });
   }
 
-  const extraOrigins = cfg.server.allowed_origins ?? [];
+  const extraOrigins = normalizeOrigins(cfg.server.allowed_origins);
   /**
    * CORS for the origins in server.allowed_origins (never for loopback, which is served same-origin):
    * answers preflights and adds Access-Control-Allow-Origin so a page on that origin can read the reply.
    * No credentials: the dashboard has no cookies or auth to share.
    */
-  const corsOrigin = (req: Request): string | null => {
+  const corsRule = (req: Request): { origin: string; rule: OriginRule } | null => {
     const origin = req.headers.get("origin");
     if (!origin || !extraOrigins.length) return null;
-    try { return listedOrigin(new URL(origin), extraOrigins) ? origin : null; } catch { return null; }
+    try { const rule = listedOrigin(new URL(origin), extraOrigins); return rule ? { origin, rule } : null; } catch { return null; }
   };
   return async function handle(req: Request): Promise<Response> {
-    const origin = corsOrigin(req);
-    if (req.method === "OPTIONS" && req.headers.get("access-control-request-method")) {
-      if (!origin) return new Response(null, { status: 403, headers: { Vary: "Origin" } });
+    const hit = corsRule(req);
+    const origin = hit?.origin ?? null;
+    const preflight = req.headers.get("access-control-request-method");
+    if (req.method === "OPTIONS" && preflight) {
+      if (!hit || !permits(hit.rule, preflight)) return new Response(null, { status: 403, headers: { Vary: "Origin" } });
       return new Response(null, { status: 204, headers: {
-        "Access-Control-Allow-Origin": origin,
-        "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
+        "Access-Control-Allow-Origin": hit.origin,
+        "Access-Control-Allow-Methods": ["GET", ...(hit.rule.methods ?? WRITE_METHODS), "OPTIONS"].join(", "),
         "Access-Control-Allow-Headers": req.headers.get("access-control-request-headers") ?? "content-type",
         "Access-Control-Max-Age": "600",
         Vary: "Origin",
@@ -234,7 +243,7 @@ export function createApp(deps: AppDeps) {
     const url = new URL(req.url);
     const path = url.pathname;
     const m = req.method;
-    if (m !== "GET" && !allowedOrigin(req, cfg.server.allowed_origins ?? [])) return fail(403, "Cross-origin request refused");
+    if (m !== "GET" && !allowedOrigin(req, extraOrigins)) return fail(403, `Cross-origin ${m} refused`);
 
     // Hook ingest: raw Claude Code hook JSON (/hooks) or an event envelope (/events).
     if ((path === "/hooks" || path === "/events") && m === "POST") {

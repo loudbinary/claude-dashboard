@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { resolve } from "node:path";
 import { allowedOrigin, createApp } from "../src/app";
-import { deepMerge, loadConfig } from "../src/config";
+import { deepMerge, loadConfig, normalizeOrigins } from "../src/config";
 import { Store } from "../src/db";
 import { buildArgs, makeStreamHandler } from "../src/launcher";
 import { azureDevOps, pendingApprovalStages } from "../src/providers/azureDevOps";
@@ -287,6 +287,20 @@ describe("app", () => {
     expect(allowedOrigin(o("http://dash.example:8443"), extra)).toBe(false);
     expect(allowedOrigin(o("http://devbox.evil.example"), extra)).toBe(false);
     expect(allowedOrigin(o("http://devbox:9999"))).toBe(false);
+    // Verb overrides: this origin may POST and DELETE but not PATCH.
+    const verbs = [{ origin: "http://192.168.1.23:4000", methods: ["post", "DELETE"] }];
+    const v = (method: string) => new Request("http://127.0.0.1/x", { method, headers: { origin: "http://192.168.1.23:4000" } });
+    expect(allowedOrigin(v("POST"), verbs)).toBe(true);
+    expect(allowedOrigin(v("DELETE"), verbs)).toBe(true);
+    expect(allowedOrigin(v("PATCH"), verbs)).toBe(false);
+    expect(() => normalizeOrigins([{ origin: "x", methods: ["TRACE"] }])).toThrow();
+    expect(() => normalizeOrigins(["*"])).toThrow();
+    const vh = createApp({ cfg: { ...cfg, server: { ...cfg.server, allowed_origins: normalizeOrigins(verbs) } }, store: new Store(":memory:"), providers: [], clientDir: "/nonexistent", broadcast: () => {} });
+    const vpre = (method: string) => vh(new Request("http://127.0.0.1/api/sessions/s1", { method: "OPTIONS", headers: { origin: "http://192.168.1.23:4000", "access-control-request-method": method } }));
+    const vok = await vpre("DELETE");
+    expect(vok.status).toBe(204);
+    expect(vok.headers.get("access-control-allow-methods")).toBe("GET, POST, DELETE, OPTIONS");
+    expect((await vpre("PATCH")).status).toBe(403);
     const corsCfg = { ...cfg, server: { ...cfg.server, allowed_origins: ["http://lan:4000"] } };
     const ch = createApp({ cfg: corsCfg, store: new Store(":memory:"), providers: [], clientDir: "/nonexistent", broadcast: () => {} });
     const pre = (origin: string) => ch(new Request("http://127.0.0.1/api/actions/review_pr", { method: "OPTIONS",

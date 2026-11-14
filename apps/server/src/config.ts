@@ -37,13 +37,45 @@ export interface TeamsSweepConfig {
   sources: { name: string; url: string }[];
 }
 
+/** Write verbs an allowed origin can be granted. GET/HEAD are never origin-checked. */
+export const WRITE_METHODS = ["POST", "PUT", "PATCH", "DELETE"] as const;
+/** One normalized server.allowed_origins entry. methods null = every write verb. */
+export interface OriginRule { match: string; methods: string[] | null }
+
+/** Validates and normalizes server.allowed_origins entries (strings or { origin, methods }). */
+export function normalizeOrigins(list: unknown): OriginRule[] {
+  const bad = (why: string) => new Error(`server.allowed_origins: ${why}. Use "host", "host:port", "http(s)://host:port", or { origin: ..., methods: [POST, DELETE] }; "*" is not allowed.`);
+  if (list == null) return [];
+  if (!Array.isArray(list)) throw bad("must be a list");
+  return list.map((e) => {
+    if (e && typeof e === "object" && "match" in e) return e as OriginRule; // already normalized
+    const raw = typeof e === "string" ? e : (e as { origin?: unknown })?.origin;
+    if (typeof raw !== "string" || !raw.trim() || raw.trim() === "*") throw bad(`invalid entry ${JSON.stringify(e)}`);
+    let methods: string[] | null = null;
+    if (typeof e === "object") {
+      const m = (e as { methods?: unknown }).methods;
+      if (m != null) {
+        if (!Array.isArray(m) || !m.length) throw bad(`methods for ${raw} must be a non-empty list`);
+        methods = m.map((x) => String(x).trim().toUpperCase());
+        const unknown = methods.filter((x) => !(WRITE_METHODS as readonly string[]).includes(x));
+        if (unknown.length) throw bad(`methods for ${raw} must be from ${WRITE_METHODS.join(", ")} (got ${unknown.join(", ")})`);
+      }
+    }
+    return { match: raw.trim().toLowerCase().replace(/\/$/, ""), methods };
+  });
+}
+
 export interface ProviderConfig { enabled: boolean; token_env?: string; api_version?: string }
 
 export interface Config {
   server: {
     host: string; port: number; database_path: string;
-    /** Extra origins allowed to POST, beyond loopback. "host" (any port), "host:port", or a full "http(s)://host:port" origin. */
-    allowed_origins?: string[] | null;
+    /**
+     * Extra origins allowed to send writes, beyond loopback. Each entry is "host" (any port), "host:port",
+     * a full "http(s)://host:port" origin, or { origin: <one of those>, methods: [POST, DELETE, ...] } to limit
+     * which write verbs that origin may use. Normalized by loadConfig to OriginRule[].
+     */
+    allowed_origins?: (string | { origin: string; methods?: string[] | null } | OriginRule)[] | null;
   };
   claude: {
     command: string; default_cwd: string; extra_args: string[];
@@ -89,7 +121,7 @@ export function loadConfig(path = process.env.CLAUDE_DASHBOARD_CONFIG ?? resolve
   if (!existsSync(path)) throw new Error(`Config file not found: ${path}`);
   let cfg = parse(readFileSync(path, "utf8")) as Config;
   const local = path.replace(/\.ya?ml$/, ".local.yaml");
-  if (existsSync(local)) cfg = deepMerge(cfg, parse(readFileSync(local, "utf8")));
+  if (existsSync(local)) cfg = deepMerge(cfg, parse(readFileSync(local, "utf8")) ?? {}); // an all-comments file parses to null
   cfg.notifications = deepMerge(notificationDefaults, cfg.notifications ?? {});
   if (!["reminder", "urgent", "default"].includes(cfg.notifications.scenario)) throw new Error(`notifications.scenario must be "reminder", "urgent" or "default"`);
 
@@ -102,10 +134,7 @@ export function loadConfig(path = process.env.CLAUDE_DASHBOARD_CONFIG ?? resolve
   cfg.server.database_path = abs(cfg.server.database_path);
   cfg.claude.default_cwd = abs(process.env.CLAUDE_DASHBOARD_CWD || cfg.claude.default_cwd || ".");
   if (process.env.CLAUDE_DASHBOARD_PORT) cfg.server.port = Number(process.env.CLAUDE_DASHBOARD_PORT);
-  const extra = cfg.server.allowed_origins ?? [];
-  if (!Array.isArray(extra) || extra.some((o) => typeof o !== "string" || !o.trim() || o.trim() === "*"))
-    throw new Error(`server.allowed_origins must be a list of host, host:port or http(s)://host:port entries ("*" is not allowed)`);
-  cfg.server.allowed_origins = extra.map((o) => o.trim().toLowerCase());
+  cfg.server.allowed_origins = normalizeOrigins(cfg.server.allowed_origins);
 
   const keys = new Set<string>();
   for (const a of cfg.actions ?? []) {
