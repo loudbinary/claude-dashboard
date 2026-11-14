@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { resolve } from "node:path";
-import { createApp } from "../src/app";
+import { allowedOrigin, createApp } from "../src/app";
 import { deepMerge, loadConfig } from "../src/config";
 import { Store } from "../src/db";
 import { buildArgs, makeStreamHandler } from "../src/launcher";
@@ -278,6 +278,15 @@ describe("app", () => {
     const { handle } = setup();
     expect((await handle(post("/api/actions/review_pr", { url: "x" }, { origin: "https://evil.example" }))).status).toBe(403);
     expect((await handle(post("/api/actions/review_pr", { url: "https://github.com/o/r/pull/1" }, { origin: "http://localhost:5173" }))).status).toBe(201);
+    const o = (origin: string) => new Request("http://127.0.0.1/x", { method: "POST", headers: { origin } });
+    const extra = ["devbox", "lan:4000", "https://dash.example:8443"];
+    expect(allowedOrigin(o("http://devbox:9999"), extra)).toBe(true);
+    expect(allowedOrigin(o("http://lan:4000"), extra)).toBe(true);
+    expect(allowedOrigin(o("http://lan:4001"), extra)).toBe(false);
+    expect(allowedOrigin(o("https://dash.example:8443"), extra)).toBe(true);
+    expect(allowedOrigin(o("http://dash.example:8443"), extra)).toBe(false);
+    expect(allowedOrigin(o("http://devbox.evil.example"), extra)).toBe(false);
+    expect(allowedOrigin(o("http://devbox:9999"))).toBe(false);
     const plain = new Request("http://127.0.0.1/api/actions/review_pr", { method: "POST", headers: { "content-type": "text/plain" }, body: '{"url":"https://github.com/o/r/pull/1"}' });
     expect((await handle(plain)).status).toBe(400);
   });

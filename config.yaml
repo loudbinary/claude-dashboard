@@ -6,6 +6,10 @@ server:
   host: 127.0.0.1
   port: 4000
   database_path: ./data/dashboard.sqlite
+  # Origins (besides loopback, always allowed) whose web pages may POST to the dashboard. Needed only when
+  # host is not 127.0.0.1 and you open the UI by another name. Add yours in config.local.yaml.
+  #   "devbox" (any port) | "devbox:4000" | "http://devbox:4000" (exact origin). "*" is refused.
+  allowed_origins: []
 
 claude:
   command: claude            # CLI used to launch and resume sessions from the dashboard

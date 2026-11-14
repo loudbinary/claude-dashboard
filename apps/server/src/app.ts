@@ -82,11 +82,20 @@ const fail = (status: number, error: string) => json({ error }, status);
 const KIND_LABEL = { pr: "pull request", run: "pipeline run", incident: "PagerDuty incident" } as const;
 const fill = (tpl: string, vars: Record<string, string>) => tpl.replace(/\{(\w+)\}/g, (m, k) => vars[k] ?? m);
 
-/** Requests from a web page on another site are refused, so a stray page cannot start sessions. */
-function allowedOrigin(req: Request): boolean {
+/**
+ * Requests from a web page on another site are refused, so a stray page cannot start sessions.
+ * Loopback is always allowed; `server.allowed_origins` adds more (e.g. when bound to 0.0.0.0):
+ * "host" matches any port, "host:port" that port, "http(s)://host:port" that exact origin.
+ */
+export function allowedOrigin(req: Request, extra: readonly string[] = []): boolean {
   const origin = req.headers.get("origin");
   if (!origin) return true; // Claude Code hooks, curl, same-origin GETs
-  try { return ["127.0.0.1", "localhost", "[::1]"].includes(new URL(origin).hostname); } catch { return false; }
+  let u: URL;
+  try { u = new URL(origin); } catch { return false; }
+  if (["127.0.0.1", "localhost", "[::1]"].includes(u.hostname)) return true;
+  const port = u.port || (u.protocol === "https:" ? "443" : "80");
+  return extra.some((e) => e.includes("://") ? e.replace(/\/$/, "") === u.origin
+    : e === u.hostname || e === `${u.hostname}:${port}`);
 }
 
 async function body(req: Request): Promise<any | null> {
@@ -190,7 +199,7 @@ export function createApp(deps: AppDeps) {
     const url = new URL(req.url);
     const path = url.pathname;
     const m = req.method;
-    if (m !== "GET" && !allowedOrigin(req)) return fail(403, "Cross-origin request refused");
+    if (m !== "GET" && !allowedOrigin(req, cfg.server.allowed_origins ?? [])) return fail(403, "Cross-origin request refused");
 
     // Hook ingest: raw Claude Code hook JSON (/hooks) or an event envelope (/events).
     if ((path === "/hooks" || path === "/events") && m === "POST") {

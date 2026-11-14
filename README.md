@@ -227,7 +227,7 @@ Set under `ui.status`. States with `attention: true` sort to the top, tint the r
   Sessions running in a terminal are observed only; reply in the terminal.
 - **Session notes**: read from the transcript file Claude Code reports, so they appear only on the machine that ran the session.
 - **Pipeline watch**: polled every `watch.poll_interval_seconds`; stops when the run finishes. Nothing is approved for you.
-- **Local only**: the server binds to 127.0.0.1 and refuses POSTs from web pages on other origins.
+- **Local only**: the server binds to 127.0.0.1 and refuses POSTs from web pages on other origins. If you bind it elsewhere and open the UI by another name, list that origin under `server.allowed_origins` in config.local.yaml (`host`, `host:port` or `http(s)://host:port`; `*` is refused). Loopback is always allowed.
 
 ## Layout
 

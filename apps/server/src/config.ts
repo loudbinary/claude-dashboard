@@ -40,7 +40,11 @@ export interface TeamsSweepConfig {
 export interface ProviderConfig { enabled: boolean; token_env?: string; api_version?: string }
 
 export interface Config {
-  server: { host: string; port: number; database_path: string };
+  server: {
+    host: string; port: number; database_path: string;
+    /** Extra origins allowed to POST, beyond loopback. "host" (any port), "host:port", or a full "http(s)://host:port" origin. */
+    allowed_origins?: string[] | null;
+  };
   claude: {
     command: string; default_cwd: string; extra_args: string[];
     /** Permission mode for every dashboard launch that does not set its own (e.g. "auto"). Empty = workspace settings. */
@@ -98,6 +102,10 @@ export function loadConfig(path = process.env.CLAUDE_DASHBOARD_CONFIG ?? resolve
   cfg.server.database_path = abs(cfg.server.database_path);
   cfg.claude.default_cwd = abs(process.env.CLAUDE_DASHBOARD_CWD || cfg.claude.default_cwd || ".");
   if (process.env.CLAUDE_DASHBOARD_PORT) cfg.server.port = Number(process.env.CLAUDE_DASHBOARD_PORT);
+  const extra = cfg.server.allowed_origins ?? [];
+  if (!Array.isArray(extra) || extra.some((o) => typeof o !== "string" || !o.trim() || o.trim() === "*"))
+    throw new Error(`server.allowed_origins must be a list of host, host:port or http(s)://host:port entries ("*" is not allowed)`);
+  cfg.server.allowed_origins = extra.map((o) => o.trim().toLowerCase());
 
   const keys = new Set<string>();
   for (const a of cfg.actions ?? []) {
